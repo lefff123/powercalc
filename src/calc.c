@@ -5,45 +5,50 @@
 
 
 #define NODES 15
-#define MAX_ITER 200
+#define MAX_ITER 20
 #define TOLERANCE 1e-6
 #define NUM_Z 5
 
 // Структура для хранения параметров сети постоянного тока
 typedef struct
 {
-    double G[NODES][NODES]; // Матрица проводимостей
-    double P[NODES];        // Активная мощность
-    double V[NODES];        // Напряжения
-    int node_types[NODES];  // 0 - PQ, 2 - база
+    double** G; // Матрица проводимостей
+    double* P;        // Активная мощность
+    double* V;        // Напряжения
+    int* node_types;  // 0 - PQ, 2 - база
 } pwrsys;
  
-void initialize_system(pwrsys *sys, double g_mat[NODES][NODES], double *p_mat, double v, int base)
+void initialize_system(pwrsys *sys, double** g_mat, double *p_mat, double v, int base, int Nodes)
 { // система, проводимость, мощности, напряжение базы, номер базы
     // задаем проводимости
-    for (size_t i = 0; i < NODES; ++i)
-    {
-        for (size_t j = 0; j < NODES; ++j)
-        {
-            sys->G[i][j] = g_mat[i][j];
-        }
-    }
+    sys->G = g_mat;
 
     // задаем мощности и напряжения
-    for (int i = 0; i < NODES; i++)
+    sys->P = malloc(sizeof(double)*Nodes);
+    sys->V = malloc(sizeof(double)*Nodes);
+    sys->node_types = malloc(sizeof(int)*Nodes);
+
+    puts("bytes managed");
+    for (int i = 0; i < Nodes; i++)
     {
         sys->P[i] = p_mat[i];
         sys->V[i] = v;
         sys->node_types[i] = 0;
     }
 
-    sys->node_types[base] = 2; // база
+    puts("nodes initialized");
+    if (base< Nodes){
+        sys->node_types[base] = 2; // база
+    }
+    else{
+        sys->node_types[Nodes-1] = 2; //проверка, не вылезли ли мы за границы
+    }
 
     puts("Initialized:");
-    for (int i = 0; i < NODES; ++i)
+    for (int i = 0; i < Nodes; ++i)
     {
         printf("G%d:", i + 1);
-        for (int j = 0; j < NODES; ++j)
+        for (int j = 0; j < Nodes; ++j)
         {
             printf("%.2f ", sys->G[i][j]);
         }
@@ -259,7 +264,6 @@ void solver(pwrsys *sys)
                     sys->V[k] += d_u[k];
                 }
             }
-
             return;
         }
         printf("Итерация %ld, значения напряжений: ", i + 1);

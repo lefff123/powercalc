@@ -1,28 +1,41 @@
-#include "SDL3/SDL.h"
-typedef struct {
-    SDL_Window* window; 
-    SDL_Renderer* renderer;
-} Sdlstate;
+#include "raylib.h"
+#include "raylib.h"
+#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
+
+#define SCREENWIDTH 1280
+#define SCREENHEIGHT 720
+
 
 typedef struct{
-    char text[32];
-    _Bool selected;
-    SDL_FRect rect;
+    Rectangle r;
+    _Bool is_shaped;
+    char* str;
+    unsigned long long  strlen;
 }textfield;
 
 typedef struct {
-    textfield* tf;
-    int rows;
-    int cols;
-    textfield rows_input;
-    textfield cols_input;
-    _Bool showmatrix;
-}matrix_sdl;
+    textfield rows;
+    textfield colls;
+    textfield btn_make;
+    textfield btn_clear;
+    textfield btn_solve;
+} up_menu;
 
-typedef struct{
+typedef struct {
     double** data;
-    matrix_sdl* in_out;
-}matrix;
+    textfield** tf;
+    unsigned long long n_tf;
+    up_menu menu;
+}
+matrix;
 
-void cleanup(Sdlstate* State);
-_Bool initialize_window(Sdlstate* State, const int width, const int height);
+void handle_input(matrix* m, int chosen);
+int check_collision(matrix* m);
+void draw_graphics(matrix* m, int scr_w, int scr_h, int chosen, _Bool mouse_button_pressed);
+void make_tf(matrix* m, int scr_w, int scr_h);
+void init_m(matrix* m);
+void destroy_data(matrix* m);
+void make_m(matrix *m);
+void transfer_data(matrix* m);
