@@ -50,7 +50,7 @@ TEST(MatrixConstructors, From2DVector) {
 
 TEST(MatrixConstructors, JaggedVectorThrows) {
     std::vector<std::vector<double>> data = {{1, 2}, {3}};
-    EXPECT_THROW(Matrix<double>(data), std::invalid_argument);
+    EXPECT_THROW((Matrix<double>(data)), std::invalid_argument);
 }
 
 // ==================== Доступ к элементам ====================
