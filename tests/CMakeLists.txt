@@ -16,6 +16,8 @@ message(STATUS "Fetching Google Test (may take a while on first run)...")
 FetchContent_MakeAvailable(googletest)
 message(STATUS "Google Test fetched successfully")
 
+
+
 # Исполняемый файл тестов
 add_executable(matrix_tests 
     test_matrix.cpp

@@ -14,10 +14,11 @@ class Matrix
 {
 public:
     // ==================== Конструкторы ====================
-    Matrix() : rows_(0), cols_(0) { }
+    Matrix()
+        : rows_(0), cols_(0) { }
 
     Matrix(size_t rows, size_t cols)
-        : data_(rows, std::vector<T>(cols, T{ })), rows_(rows), cols_(cols) { }
+        : data_(rows, std::vector<T>(cols, T{})), rows_(rows), cols_(cols) { }
 
     Matrix(size_t rows, size_t cols, T init_val)
         : data_(rows, std::vector<T>(cols, init_val)), rows_(rows), cols_(cols) { }
