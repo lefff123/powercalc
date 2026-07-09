@@ -4,9 +4,14 @@
 #include "matrix.h"
 #include <complex>
 #include <cstddef>
+#include <cstdio>
 #include <vector>
 #include <stdexcept>
 #include <cmath>
+
+#ifndef EPSILON
+#define EPSILON 1e-12
+#endif
 
 class Solver
 {
@@ -43,7 +48,7 @@ public:
         pq_node_indices_.clear();
 
         for (size_t i = 0; i < n; ++i) {
-            V_mag_[i] = nodes[i].V_mag();
+            V_mag_[i] = nodes[i].V_mag() / system_.V_base();
             delta_[i] = nodes[i].delta();
             types_[i] = nodes[i].type();
             is_slack_[i] = (types_[i] == NodeType::SLACK);
@@ -52,16 +57,104 @@ public:
                 P_spec_pu_[i] = 0.0;
                 Q_spec_pu_[i] = 0.0;
             } else {
-                P_spec_pu_[i] = system_.P_oe(nodes[i]);
-                Q_spec_pu_[i] = system_.Q_oe(nodes[i]);
+                P_spec_pu_[i] -= system_.P_oe(nodes[i]);
+                Q_spec_pu_[i] -= system_.Q_oe(nodes[i]);
                 pq_node_indices_.push_back(i); // ← Запоминаем индекс PQ-узла
                 n_pq_++;
             }
         }
     }
+	Solver(PowerSystem &system)
+        : system_(system)
+    {
+		options_ = Options();
+        size_t n = system_.nodesCount();
+        const auto &nodes = system_.getNodes();
+        // кэширование данных для быстрого доступа
+        V_mag_.resize(n);
+        delta_.resize(n);
+        P_spec_pu_.resize(n);
+        Q_spec_pu_.resize(n);
+        types_.resize(n);
+        is_slack_.resize(n);
+        n_pq_ = 0;
+        pq_node_indices_.clear();
 
-    Result solve();
+        for (size_t i = 0; i < n; ++i) {
+            V_mag_[i] = nodes[i].V_mag() / system_.V_base();
+            delta_[i] = nodes[i].delta();
+            types_[i] = nodes[i].type();
+            is_slack_[i] = (types_[i] == NodeType::SLACK);
 
+            if (is_slack_[i]) {
+                P_spec_pu_[i] = 0.0;
+                Q_spec_pu_[i] = 0.0;
+            } else {
+                P_spec_pu_[i] -= system_.P_oe(nodes[i]);
+                Q_spec_pu_[i] -= system_.Q_oe(nodes[i]);
+                pq_node_indices_.push_back(i); // ← Запоминаем индекс PQ-узла
+                n_pq_++;
+            }
+        }
+    }
+	//метод, вызывающий солвер
+    Result solve(){
+		Matrix<std::complex<double>> Y_bus = system_.buildYBus();
+		system_.validate();
+		
+		for (size_t i = 0; i < options_.max_iterations; ++i){
+			auto mismatches = calculateMismatches(Y_bus);
+			
+			double max_mismatch = 0.;
+			for (auto mismatch : mismatches){
+				if (max_mismatch < std::abs(mismatch)){
+					max_mismatch = std::abs(mismatch);
+				}
+			}
+			
+			// Проверяем сходимость СРАЗУ после вычисления невязок
+			if (max_mismatch < options_.tolerance){
+				for (size_t j = 0; j < n_pq_; ++j){
+					size_t idx = pq_node_indices_[j];
+					system_.getNodes()[idx].setV(V_mag_[idx] * system_.V_base());
+					system_.getNodes()[idx].setDelta(delta_[idx]);
+				}
+				return Result(true, i, max_mismatch); // i, а не i+1, т.к. итерация не понадобилась
+			}
+			
+			auto J = buildJacobian(Y_bus);
+			auto dx = solveLinearSystem(J, mismatches);
+			updateVoltages(dx);
+		}
+		
+		return Result(false, options_.max_iterations, 0.0);
+	}
+	
+	std::vector<double> calculateMismatches(const Matrix<std::complex<double>> &Y_bus) const
+		{
+			std::vector<double> mismatches(2 * n_pq_, 0.);
+			size_t pq_indx = 0;
+			// считаем p
+			for (size_t ii = 0; ii < n_pq_; ++ii) {
+				size_t i = pq_node_indices_[ii];
+				if (is_slack_[i])
+					continue; // пропускаем базу
+				double calced = calc_P_calc(Y_bus, i);
+				mismatches[pq_indx] = P_spec_pu_[i] - calced;
+				++pq_indx;
+			}
+			// считаем Q
+			for (size_t ii = 0; ii < n_pq_; ++ii) {
+				size_t i = pq_node_indices_[ii];
+				if (is_slack_[i])
+					continue; // пропускаем базу
+				double calced = calc_Q_calc(Y_bus, i);
+				mismatches[pq_indx] = Q_spec_pu_[i] - calced;
+				++pq_indx;
+			}
+
+			return mismatches;
+	}
 private:
     PowerSystem &system_;
     Options options_;
@@ -77,31 +170,6 @@ private:
     std::vector<size_t> pq_node_indices_; // массив номеров элементов в матрице Якоби
 
     // Вспомогательные методы
-    std::vector<double> calculateMismatches(const Matrix<std::complex<double>> &Y_bus) const
-    {
-        std::vector<double> mismatches(2 * n_pq_, 0.);
-        size_t pq_indx = 0;
-        // считаем p
-        for (size_t ii = 0; ii < n_pq_; ++ii) {
-            size_t i = pq_node_indices_[ii];
-            if (is_slack_[i])
-                continue; // пропускаем базу
-            double calced = calc_P_calc(Y_bus, i);
-            mismatches[pq_indx] = P_spec_pu_[i] - calced;
-            ++pq_indx;
-        }
-        // считаем Q
-        for (size_t ii = 0; ii < n_pq_; ++ii) {
-            size_t i = pq_node_indices_[ii];
-            if (is_slack_[i])
-                continue; // пропускаем базу
-            double calced = calc_Q_calc(Y_bus, i);
-            mismatches[pq_indx] = Q_spec_pu_[i] - calced;
-            ++pq_indx;
-        }
-
-        return mismatches;
-    }
     double calc_P_calc(const Matrix<std::complex<double>> &Y_bus, const size_t i) const
     {
         double calced = 0.;
@@ -185,20 +253,51 @@ private:
         if (dx.size() != 2 * n_pq_) {
             throw std::invalid_argument("вектор dx не соответствует размеру вектора напряжений!");
         }
-        for (size_t ii = 0; ii < n_pq_ - 1; ++ii) {
+        for (size_t ii = 0; ii < n_pq_; ++ii) {
             size_t i = pq_node_indices_[ii];
-            if (is_slack_[i])
-                continue;
             delta_[i] += dx[ii];
             V_mag_[i] += dx[ii + n_pq_];
         }
     }
     std::vector<double> solveLinearSystem(Matrix<double> J, std::vector<double> F) const
     {
-        auto J_internal = J;
-        auto F_internal = F;
-        std::vector<double> dx;
+        std::vector<double> dx(F.size(), 0);
 
+        //_____________________ПРЯМОЙ ХОД____________________________
+        for (long col = 0; col < J.cols(); ++col){
+            //находим индекс строчки с максимальным элементом в ней
+            size_t maxRow = col;
+            for (size_t i = col + 1; i < J.rows(); ++i){
+                if (std::abs(J(maxRow, col)) < std::abs(J(i, col))) maxRow = i;
+            }
+            if (std::abs(J(maxRow, col)) < EPSILON) throw std::runtime_error("Matrix is single"); //проверка на вырожденность
+            // меняем строки местами
+            if (maxRow != col) {
+                for (size_t j = 0; j < J.cols(); ++j) {
+                    std::swap(J(col, j), J(maxRow, j));
+                }
+                std::swap(F[col], F[maxRow]);
+            }
+            
+            // обнуляем очередной столбец
+            //вычитаем из нижестоящих строчек очередную 
+            for (size_t row = col + 1; row < J.rows(); ++row){
+                double factor = J(row, col) / J(col, col); //коэффициент домножения
+                for (size_t i = col; i < J.cols(); ++i){
+                    J(row, i) -= J(col, i) * factor;
+                }
+                F[row] -= F[col] * factor; //вычитаем и из вектора невязок тоже
+            }
+             //добавляем +1 к номеру следующего начального ряда
+        }
+        //_________________ ОБРАТНЫЙ ХОД______________________________
+        for (long row = J.rows() - 1; row >= 0; --row){
+            double sum_eq = 0.;
+            for (size_t i = row + 1; i < J.cols(); ++i){
+                sum_eq += J(row, i) * dx[i];
+            }
+            dx[row] = (F[row] - sum_eq)/J(row, row);
+        }
         return dx;
     }
 };

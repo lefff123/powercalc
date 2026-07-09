@@ -14,6 +14,15 @@
 class PowerSystem
 {
 public:
+	struct LineFlows {
+		size_t line_id;
+		size_t from_node;
+		size_t to_node;
+		std::complex<double> S_from;  // Мощность в начале линии (ВА)
+		std::complex<double> S_to;    // Мощность в конце линии (ВА)
+		std::complex<double> S_loss;  // Потери (ВА) = S_from + S_to
+	};
+
     PowerSystem(double S_base, double V_base)
         : S_base_(S_base), V_base_(V_base), Z_base_((V_base * V_base / S_base)), Y_base_(1 / Z_base_)
     {
@@ -69,8 +78,11 @@ public:
         }
         return lines_[*idx]; // *idx — разыменовываем optional
     }
-
-    const std::vector<Node> &getNodes() const
+    std::vector<Node> &getNodes()
+    {
+        return nodes_;
+    }
+	const std::vector<Node> &getNodes() const
     {
         return nodes_;
     }
@@ -185,7 +197,60 @@ public:
     {
         return id_to_index_.count(id) > 0;
     }
+	
+	std::vector<LineFlows> calculateLineFlows() const{
+		std::vector<LineFlows> flows;
+		flows.reserve(lines_.size());
+		for (auto line : lines_){
+			//находим индексы точек по id
+			size_t i = getNodeIndex(line.from());
+			size_t j = getNodeIndex(line.to());
+			//вычисляем комплексные напряжения в точках
+			std::complex<double> V_i = (nodes_[i].V_mag() / V_base_) * std::complex<double>(std::cos(nodes_[i].delta()), std::sin(nodes_[i].delta()));
+			std::complex<double> V_j = (nodes_[j].V_mag() / V_base_) * std::complex<double>(std::cos(nodes_[j].delta()), std::sin(nodes_[j].delta()));
+			//вычисляем ток и мощности
+			auto I_from = Y_oe(line) * (V_i - V_j);
+			auto I_to = Y_oe(line) * (V_j - V_i );
+			auto S_from_pu = V_i * std::conj(I_from);
+			auto S_to_pu = V_j * std::conj(I_to);
+			flows.push_back(LineFlows(line.id(), line.from(), line.to(), S_from_pu * S_base_, S_to_pu * S_base_, (S_from_pu + S_to_pu) * S_base_));
+		}
+		return flows;
+	}
 
+	// Расчёт комплексной мощности в Slack-узле
+	std::complex<double> calculateSlackPower() const {
+		auto Y_bus = buildYBus();
+		size_t n = nodes_.size();
+		
+		// Находим Slack-узел
+		size_t slack_idx = 0;
+		for (size_t i = 0; i < n; ++i) {
+			if (nodes_[i].type() == NodeType::SLACK) {
+				slack_idx = i;
+				break;
+			}
+		}
+		
+		// Собираем комплексные напряжения
+		std::vector<std::complex<double>> V(n);
+		for (size_t i = 0; i < n; ++i) {
+			double v_pu = nodes_[i].V_mag() / V_base_;
+			double delta = nodes_[i].delta();
+			V[i] = v_pu * std::complex<double>(std::cos(delta), std::sin(delta));
+		}
+		
+		// S_slack = V_slack * conj(sum(Y_slack,j * V_j))
+		std::complex<double> I_slack(0.0, 0.0);
+		for (size_t j = 0; j < n; ++j) {
+			I_slack += Y_bus(slack_idx, j) * V[j];
+		}
+		
+		std::complex<double> S_slack_pu = V[slack_idx] * std::conj(I_slack);
+		
+		// Переводим в ВА
+		return S_slack_pu * S_base_;
+	}
 private:
     std::vector<Node> nodes_;
     std::vector<Line> lines_;

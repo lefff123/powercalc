@@ -8,7 +8,7 @@ class Node
 public:
     // Фабрики
     static Node makePQ(NodeId id, double P_spec, double Q_spec,
-                       double V_init = 1.0, double delta_init = 0.0);
+                       double V_init, double delta_init = 0.0);
     static Node makeSlack(NodeId id, double V_set_volts, double delta);
 
     // Геттеры
