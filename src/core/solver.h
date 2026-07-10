@@ -48,7 +48,7 @@ public:
         pq_node_indices_.clear();
 
         for (size_t i = 0; i < n; ++i) {
-            V_mag_[i] = nodes[i].V_mag() / system_.V_base();
+            V_mag_[i] = nodes[i].V_mag() / system_.V_base(nodes[i].id());
             delta_[i] = nodes[i].delta();
             types_[i] = nodes[i].type();
             is_slack_[i] = (types_[i] == NodeType::SLACK);
@@ -57,8 +57,8 @@ public:
                 P_spec_pu_[i] = 0.0;
                 Q_spec_pu_[i] = 0.0;
             } else {
-                P_spec_pu_[i] -= system_.P_oe(nodes[i]);
-                Q_spec_pu_[i] -= system_.Q_oe(nodes[i]);
+                P_spec_pu_[i] += system_.P_oe(nodes[i]);
+                Q_spec_pu_[i] += system_.Q_oe(nodes[i]);
                 pq_node_indices_.push_back(i); // ← Запоминаем индекс PQ-узла
                 n_pq_++;
             }
@@ -81,7 +81,7 @@ public:
         pq_node_indices_.clear();
 
         for (size_t i = 0; i < n; ++i) {
-            V_mag_[i] = nodes[i].V_mag() / system_.V_base();
+            V_mag_[i] = nodes[i].V_mag() / system_.V_base(nodes[i].id());
             delta_[i] = nodes[i].delta();
             types_[i] = nodes[i].type();
             is_slack_[i] = (types_[i] == NodeType::SLACK);
@@ -105,18 +105,27 @@ public:
 		for (size_t i = 0; i < options_.max_iterations; ++i){
 			auto mismatches = calculateMismatches(Y_bus);
 			
+			// // ОТЛАДКА: вывод невязок
+			// std::cout << "\n=== Итерация " << i << " ===" << std::endl;
+			// std::cout << "Невязки: ";
+			// for (size_t k = 0; k < mismatches.size(); ++k) {
+			// 	std::cout << mismatches[k] << " ";
+			// }
+			// std::cout << std::endl;
+			
 			double max_mismatch = 0.;
 			for (auto mismatch : mismatches){
 				if (max_mismatch < std::abs(mismatch)){
 					max_mismatch = std::abs(mismatch);
 				}
 			}
+    		// std::cout << "Max mismatch: " << max_mismatch << std::endl;
 			
 			// Проверяем сходимость СРАЗУ после вычисления невязок
 			if (max_mismatch < options_.tolerance){
 				for (size_t j = 0; j < n_pq_; ++j){
 					size_t idx = pq_node_indices_[j];
-					system_.getNodes()[idx].setV(V_mag_[idx] * system_.V_base());
+					system_.getNodes()[idx].setV(V_mag_[idx] * system_.V_base(system_.getNodes()[idx].id()));
 					system_.getNodes()[idx].setDelta(delta_[idx]);
 				}
 				return Result(true, i, max_mismatch); // i, а не i+1, т.к. итерация не понадобилась
@@ -290,7 +299,7 @@ private:
             }
              //добавляем +1 к номеру следующего начального ряда
         }
-        //_________________ ОБРАТНЫЙ ХОД______________________________
+        //_________________________ОБРАТНЫЙ ХОД______________________________
         for (long row = J.rows() - 1; row >= 0; --row){
             double sum_eq = 0.;
             for (size_t i = row + 1; i < J.cols(); ++i){

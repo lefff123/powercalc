@@ -10,6 +10,7 @@
 #include <stdexcept>
 #include <unordered_map>
 #include <vector>
+#include <queue>
 
 class PowerSystem
 {
@@ -42,6 +43,7 @@ public:
         }
         id_to_index_[node.id()] = nodes_.size();
         nodes_.push_back(node);
+		base_voltages_valid_ = false;
     }
 
     void addLine(const Line &line)
@@ -56,6 +58,7 @@ public:
             throw std::invalid_argument("Line references non-existent node: " + std::to_string(line.to()));
         }
         lines_.push_back(line);
+		base_voltages_valid_ = false;
     }
 
     // Доступ к элементам
@@ -109,6 +112,11 @@ public:
     {
         return V_base_;
     }
+	//Возвращаем базу для каждого узла отдельно
+    double V_base(NodeId id) const { //NodeId == size_t
+		recalculateBaseVoltages();
+		return V_base_per_node_[getNodeIndex(id)]; 
+	}
     double Z_base() const
     {
         return Z_base_;
@@ -145,9 +153,10 @@ public:
         return node.Q_spec() / S_base_;
     }
     double V_oe(const Node &node) const
-    {
-        return node.V_mag() / V_base_;
-    }
+	{
+		recalculateBaseVoltages();
+		return node.V_mag() /  V_base_per_node_[getNodeIndex(node.id())];
+	}
 
     // Валидация сети
     void validate() const
@@ -166,6 +175,7 @@ public:
     Matrix<std::complex<double>> buildYBus() const
     {
         Matrix<std::complex<double>> Y_bus(nodes_.size(), nodes_.size());
+		recalculateBaseVoltages();
         // заполняем проводимостями
         for (const auto &line : lines_) {
             if (!line.isEnabled())
@@ -173,13 +183,20 @@ public:
             auto idx_from = getNodeIndex(line.from());
             auto idx_to = getNodeIndex(line.to());
 
-            // не-диагональные элементы матрицы
-            Y_bus(idx_from, idx_to) -= Y_oe(line);
-            Y_bus(idx_to, idx_from) -= Y_oe(line);
+            // Эффективный коэффициент трансформации в о.е.
+            std::complex<double> k_pu = line.k_t() * V_base_per_node_[idx_to] /
+                                        V_base_per_node_[idx_from];
+            std::complex<double> k_pu_conj = std::conj(k_pu);
+            double k_pu_abs_sq = std::norm(k_pu); // |k_pu|²
+            std::complex<double> y = Y_oe(line);
 
-            // диагональные элементы
-            Y_bus(idx_to, idx_to) += Y_oe(line);
-            Y_bus(idx_from, idx_from) += Y_oe(line);
+            // диагональные элементы матрицы
+            Y_bus(idx_from, idx_from) += y / k_pu_abs_sq; // Y_ii = y / |k_pu|²
+            Y_bus(idx_to, idx_to) += y;                   // Y_jj = y
+
+            // недиагональные элементы
+            Y_bus(idx_from, idx_to) -= y / k_pu_conj; // Y_ij = -y / k_pu*
+            Y_bus(idx_to, idx_from) -= y / k_pu;      // Y_ji = -y / k_pu
         }
         return Y_bus;
     }
@@ -199,18 +216,31 @@ public:
     }
 	
 	std::vector<LineFlows> calculateLineFlows() const{
+		recalculateBaseVoltages();
+
 		std::vector<LineFlows> flows;
 		flows.reserve(lines_.size());
 		for (auto line : lines_){
+			
 			//находим индексы точек по id
 			size_t i = getNodeIndex(line.from());
 			size_t j = getNodeIndex(line.to());
+			
 			//вычисляем комплексные напряжения в точках
-			std::complex<double> V_i = (nodes_[i].V_mag() / V_base_) * std::complex<double>(std::cos(nodes_[i].delta()), std::sin(nodes_[i].delta()));
-			std::complex<double> V_j = (nodes_[j].V_mag() / V_base_) * std::complex<double>(std::cos(nodes_[j].delta()), std::sin(nodes_[j].delta()));
-			//вычисляем ток и мощности
-			auto I_from = Y_oe(line) * (V_i - V_j);
-			auto I_to = Y_oe(line) * (V_j - V_i );
+			std::complex<double> V_i = (nodes_[i].V_mag() / V_base_per_node_[i]) * std::complex<double>(std::cos(nodes_[i].delta()), std::sin(nodes_[i].delta()));
+			std::complex<double> V_j = (nodes_[j].V_mag() / V_base_per_node_[j]) * std::complex<double>(std::cos(nodes_[j].delta()), std::sin(nodes_[j].delta()));
+					
+			// Эффективный коэффициент трансформации в о.е.
+			std::complex<double> k_pu = line.k_t() * V_base_per_node_[j] / V_base_per_node_[i];
+			std::complex<double> k_pu_conj = std::conj(k_pu);
+			double k_pu_abs_sq = std::norm(k_pu);
+
+			//Подготовим данные к расчету
+			std::complex<double> y = Y_oe(line);
+
+			// Токи по Π-модели
+			auto I_from = (y / k_pu_abs_sq) * V_i - (y / k_pu_conj) * V_j;
+			auto I_to = -(y / k_pu) * V_i + y * V_j;
 			auto S_from_pu = V_i * std::conj(I_from);
 			auto S_to_pu = V_j * std::conj(I_to);
 			flows.push_back(LineFlows(line.id(), line.from(), line.to(), S_from_pu * S_base_, S_to_pu * S_base_, (S_from_pu + S_to_pu) * S_base_));
@@ -235,7 +265,7 @@ public:
 		// Собираем комплексные напряжения
 		std::vector<std::complex<double>> V(n);
 		for (size_t i = 0; i < n; ++i) {
-			double v_pu = nodes_[i].V_mag() / V_base_;
+			double v_pu = nodes_[i].V_mag() / V_base_per_node_[i];
 			double delta = nodes_[i].delta();
 			V[i] = v_pu * std::complex<double>(std::cos(delta), std::sin(delta));
 		}
@@ -255,6 +285,8 @@ private:
     std::vector<Node> nodes_;
     std::vector<Line> lines_;
     std::unordered_map<NodeId, size_t> id_to_index_;
+	mutable std::vector<double> V_base_per_node_;
+	mutable bool base_voltages_valid_ = false;
 
     double S_base_;
     double V_base_;
@@ -270,4 +302,66 @@ private:
         }
         return std::nullopt;
     }
+    void recalculateBaseVoltages() const{
+		if (base_voltages_valid_) return;
+		V_base_per_node_.resize(nodes_.size());
+		
+		// 1. Найти Slack-узел (индекс)
+		std::optional<size_t> slack_idx;  // size_t — индекс
+		for (size_t i = 0; i < nodes_.size(); ++i) {
+			if (nodes_[i].type() == NodeType::SLACK && nodes_[i].isEnabled()) {
+				slack_idx = i;
+				break;
+			}
+		}
+		
+		if (!slack_idx.has_value()) {
+			throw std::runtime_error("No Slack node found");
+		}
+		
+		// 2. Инициализация
+		V_base_per_node_[*slack_idx] = nodes_[*slack_idx].V_nom();
+		std::vector<bool> visited(nodes_.size(), false);
+		std::queue<size_t> q;  //  Храним индексы
+		q.push(*slack_idx);
+		visited[*slack_idx] = true;
+		
+		// 3. BFS обход
+		while (!q.empty()) {
+			size_t current = q.front();  // current — это индекс
+			q.pop();
+			
+			for (const auto& line : lines_) {
+				if (!line.isEnabled()) continue;
+				
+				size_t i = getNodeIndex(line.from());  //  Индекс узла from
+				size_t j = getNodeIndex(line.to());     //  Индекс узла to
+				
+				// Переход от current к j (линия from → to)
+				if (i == current && !visited[j]) {  //  Сравниваем индексы
+					V_base_per_node_[j] = V_base_per_node_[current] / std::abs(line.k_t());
+					visited[j] = true;  //  Помечаем соседа
+					q.push(j);
+				}
+				// Переход от current к i (линия to → from, т.е. обратное направление)
+				else if (j == current && !visited[i]) {  //  Сравниваем индексы
+					V_base_per_node_[i] = V_base_per_node_[current] * std::abs(line.k_t());  
+					visited[i] = true;  //  Помечаем соседа
+					q.push(i);
+				}
+			}
+			
+		}
+		
+		// 4. Проверка связности
+		for (size_t i = 0; i < nodes_.size(); ++i) {
+			if (!visited[i]) {
+				throw std::runtime_error("Network is disconnected: node " + 
+										std::to_string(nodes_[i].id()) + " unreachable");
+			}
+		}
+		base_voltages_valid_ = true;
+	}
 };
+
+	

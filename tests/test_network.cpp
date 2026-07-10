@@ -100,12 +100,12 @@ TEST(Line, BasicProperties) {
   EXPECT_EQ(l.to(), 2);
   EXPECT_DOUBLE_EQ(l.R(), 5.0);
   EXPECT_DOUBLE_EQ(l.X(), 30.0);
-  EXPECT_DOUBLE_EQ(l.k_t(), 1.0);
+  EXPECT_DOUBLE_EQ(l.k_t().real(), 1.0);
 }
 
 TEST(Line, WithTransformer) {
   Line l(1, 1, 2, 5.0, 30.0, 1.05);
-  EXPECT_DOUBLE_EQ(l.k_t(), 1.05);
+  EXPECT_DOUBLE_EQ(l.k_t().real(), 1.05);
 }
 
 // ==================== PowerSystem ====================
@@ -549,4 +549,314 @@ TEST(PowerBalance, GlobalBalance) {
     EXPECT_NEAR(Q_gen, Q_load + total_loss.imag(), 1e3);
     
     printPowerFlowResults(sys, "PowerBalance.GlobalBalance");
+}
+
+TEST(Transformer, StepDown110to10) {
+    PowerSystem sys(100e6, 110e3);
+    sys.addNode(Node::makeSlack(1, 110e3, 0.0));
+    sys.addNode(Node::makePQ(2, 10e6, 5e6, 110e3, 0.0));
+    
+    // Трансформатор 110/10 кВ, k_t = 11, R=0.5 Ом, X=10 Ом (приведены к ВН)
+    // В о.е.: R = 0.5/121 = 0.00413, X = 10/121 = 0.08264
+    sys.addLine(Line(1, 1, 2, 0.5, 10.0, 11.0));  // k_t = 11.0
+    
+    Solver solver(sys);
+    auto result = solver.solve();
+    
+    EXPECT_TRUE(result.converged);
+    
+    printPowerFlowResults(sys, "Transformer.StepDown110to10");
+    
+    // Проверка: напряжение на вторичной стороне должно быть ≈ 10 кВ
+    // В о.е. относительно 110 кВ: V_2 ≈ 10/110 = 0.0909 p.u.
+    // Но это неверно! В нашей модели все напряжения в одном базисе.
+    // Правильная проверка: сверить с pandapower
+}
+
+TEST(Transformer, RegularLineUnchanged) {
+    PowerSystem sys(100e6, 110e3);
+    sys.addNode(Node::makeSlack(1, 110e3, 0.0));
+    sys.addNode(Node::makePQ(2, 50e6, 20e6, 110e3, 0.0));
+    
+    // Обычная линия (k_t = 1.0 по умолчанию)
+    sys.addLine(Line(1, 1, 2, 2.42, 12.1));
+    
+    Solver solver(sys);
+    auto result = solver.solve();
+    
+    EXPECT_TRUE(result.converged);
+
+    const auto &nodes = sys.getNodes();
+    checkNodeVoltage(sys.getNode(2), 106.4662, -2.7241);
+}
+
+TEST(Transformer, PowerBalanceWithTransformer) {
+    PowerSystem sys(100e6, 110e3);
+    sys.addNode(Node::makeSlack(1, 110e3, 0.0));
+    sys.addNode(Node::makePQ(2, 20e6, 10e6, 110e3, 0.0));
+    
+    sys.addLine(Line(1, 1, 2, 1.0, 5.0, 1.05));  // k_t = 1.05
+    
+    Solver solver(sys);
+    solver.solve();
+    
+    auto S_slack = sys.calculateSlackPower();
+    auto flows = sys.calculateLineFlows();
+    
+    // Баланс: P_slack = P_load + P_loss
+    EXPECT_NEAR(S_slack.real(), 20e6 + flows[0].S_loss.real(), 1e3);
+    EXPECT_NEAR(S_slack.imag(), 10e6 + flows[0].S_loss.imag(), 1e3);
+}
+
+TEST(PowerSystem, BaseVoltagesWithoutTransformer) {
+    PowerSystem sys(100e6, 110e3);
+    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+    sys.addNode(Node::makePQ(2, 50e6, 20e6, 110e3, 0.0, 110e3));
+    
+    // Обычная линия (k_t = 1.0)
+    sys.addLine(Line(1, 1, 2, 2.42, 12.1));
+    
+    // Оба узла должны иметь V_base = 110 кВ
+    EXPECT_DOUBLE_EQ(sys.V_base(1), 110e3);
+    EXPECT_DOUBLE_EQ(sys.V_base(2), 110e3);
+}
+
+TEST(PowerSystem, BaseVoltagesWithTransformer) {
+    PowerSystem sys(100e6, 110e3);
+    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));  // ВН
+    sys.addNode(Node::makePQ(2, 20e6, 10e6, 10e3, 0.0, 10e3));  // НН
+    
+    // Трансформатор 110/10 кВ, k_t = 11
+    sys.addLine(Line(1, 1, 2, 0.5, 10.0, std::complex<double>(11.0, 0.0)));
+    
+    // Узел 1 (Slack): V_base = 110 кВ
+    EXPECT_DOUBLE_EQ(sys.V_base(1), 110e3);
+    
+    // Узел 2: V_base = 110 / 11 = 10 кВ
+    EXPECT_DOUBLE_EQ(sys.V_base(2), 10e3);
+}
+
+TEST(PowerSystem, BaseVoltagesDisconnectedNetwork) {
+    PowerSystem sys(100e6, 110e3);
+    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+    sys.addNode(Node::makePQ(2, 50e6, 20e6, 110e3, 0.0, 110e3));
+    sys.addNode(Node::makePQ(3, 30e6, 10e6, 110e3, 0.0, 110e3));
+    
+    // Только одна линия между узлами 1 и 2, узел 3 изолирован
+    sys.addLine(Line(1, 1, 2, 2.42, 12.1));
+    
+    // Должно бросить исключение о несвязной сети
+    EXPECT_THROW(sys.buildYBus(), std::runtime_error);
+}
+
+TEST(Solver, TransformerSimple) {
+    PowerSystem sys(100e6, 110e3);
+    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+    sys.addNode(Node::makePQ(2, 20e6, 10e6, 10e3, 0.0, 10e3));
+    
+    // Трансформатор 110/10 кВ, k_t = 11
+    sys.addLine(Line(1, 1, 2, 0.5, 10.0, std::complex<double>(11.0, 0.0)));
+    
+    Solver solver(sys);
+    auto result = solver.solve();
+    
+    EXPECT_TRUE(result.converged);
+    
+    printPowerFlowResults(sys, "TransformerSimple");
+
+    const auto &nodes = sys.getNodes();
+    EXPECT_NEAR(sys.getNode(1).V_mag(), 110e3, 1e3);
+    EXPECT_GT(sys.getNode(2).V_mag(), 9e3);
+    EXPECT_LT(sys.getNode(2).V_mag(), 11e3);
+}
+
+TEST(Solver, TransformerCascade) {
+    PowerSystem sys(100e6, 220e3);
+    sys.addNode(Node::makeSlack(1, 220e3, 0.0, 220e3));
+    sys.addNode(Node::makePQ(2, 30e6, 10e6, 110e3, 0.0, 110e3));
+    sys.addNode(Node::makePQ(3, 20e6, 8e6, 10e3, 0.0, 10e3));
+    
+    sys.addLine(Line(1, 1, 2, 1.0, 5.0, std::complex<double>(2.0, 0.0)));
+    sys.addLine(Line(2, 2, 3, 0.5, 3.0, std::complex<double>(11.0, 0.0)));
+    
+    Solver solver(sys);
+    auto result = solver.solve();
+    
+    EXPECT_TRUE(result.converged);
+    
+    printPowerFlowResults(sys, "TransformerCascade");
+
+    const auto &nodes = sys.getNodes();
+    EXPECT_GT(sys.getNode(2).V_mag(), 100e3);
+    EXPECT_LT(sys.getNode(2).V_mag(), 120e3);
+    EXPECT_GT(sys.getNode(3).V_mag(), 9e3);
+    EXPECT_LT(sys.getNode(3).V_mag(), 11e3);
+}
+
+TEST(Solver, TransformerPowerBalance) {
+    PowerSystem sys(100e6, 110e3);
+    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+    sys.addNode(Node::makePQ(2, 20e6, 10e6, 10e3, 0.0, 10e3));
+    
+    sys.addLine(Line(1, 1, 2, 0.5, 10.0, std::complex<double>(11.0, 0.0)));
+    
+    Solver solver(sys);
+    solver.solve();
+    
+    auto S_slack = sys.calculateSlackPower();
+    auto flows = sys.calculateLineFlows();
+    
+    // P_slack = P_load + P_loss
+    EXPECT_NEAR(S_slack.real(), 20e6 + flows[0].S_loss.real(), 1e3);
+    
+    // Q_slack = Q_load + Q_loss
+    EXPECT_NEAR(S_slack.imag(), 10e6 + flows[0].S_loss.imag(), 1e3);
+}
+
+// ==================== Complex Transformer Tests ====================
+
+TEST(Transformer, PhaseShiftingTransformer) {
+    // Фазосдвигающий трансформатор: только сдвиг фазы, без изменения модуля
+    // k_t = 1.0 * e^(j*5°) = cos(5°) + j*sin(5°)
+    PowerSystem sys(100e6, 110e3);
+    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+    sys.addNode(Node::makePQ(2, 50e6, 20e6, 110e3, 0.0, 110e3));
+    
+    // Комплексный k_t: модуль 1.0, угол 5°
+    double angle_rad = 5.0 * M_PI / 180.0;  // 5° в радианах
+    std::complex<double> k_t(std::cos(angle_rad), std::sin(angle_rad));
+    
+    sys.addLine(Line(1, 1, 2, 2.42, 12.1, k_t));
+    
+    Solver solver(sys);
+    auto result = solver.solve();
+    
+    EXPECT_TRUE(result.converged);
+    
+    const auto& nodes = sys.getNodes();
+    
+    // Узел 1: V = 110 кВ, угол ≈ 0°
+    EXPECT_NEAR(nodes[0].V_mag(), 110e3, 1e3);
+    
+    // Узел 2: V ≈ 110 кВ (модуль почти не изменился)
+    EXPECT_GT(nodes[1].V_mag(), 100e3);
+    EXPECT_LT(nodes[1].V_mag(), 115e3);
+    
+    // Угол узла 2 должен быть отрицательным (отстаёт из-за нагрузки)
+    EXPECT_LT(nodes[1].delta(), 0.0);
+    
+    printPowerFlowResults(sys, "Transformer.PhaseShiftingTransformer");
+}
+
+TEST(Transformer, ComplexTapWithPhaseShift) {
+    // Трансформатор с изменением напряжения И сдвигом фазы
+    // k_t = 1.05 * e^(j*10°)
+    PowerSystem sys(100e6, 110e3);
+    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+    sys.addNode(Node::makePQ(2, 30e6, 15e6, 110e3, 0.0, 110e3));
+    
+    // Комплексный k_t: модуль 1.05, угол 10°
+    double angle_rad = 10.0 * M_PI / 180.0;  // 10° в радианах
+    double magnitude = 1.05;
+    std::complex<double> k_t(magnitude * std::cos(angle_rad), magnitude * std::sin(angle_rad));
+    
+    sys.addLine(Line(1, 1, 2, 5.0, 25.0, k_t));
+    
+    Solver solver(sys);
+    auto result = solver.solve();
+    
+    EXPECT_TRUE(result.converged);
+    
+    const auto& nodes = sys.getNodes();
+    
+    // Проверка баланса мощности
+    auto S_slack = sys.calculateSlackPower();
+    auto flows = sys.calculateLineFlows();
+    
+    EXPECT_NEAR(S_slack.real(), 30e6 + flows[0].S_loss.real(), 1e3);
+    EXPECT_NEAR(S_slack.imag(), 15e6 + flows[0].S_loss.imag(), 1e3);
+    
+    printPowerFlowResults(sys, "Transformer.ComplexTapWithPhaseShift");
+}
+
+TEST(Transformer, PhaseShiftingPowerFlowControl) {
+    // Проверка: фазосдвигающий трансформатор управляет потоком активной мощности
+    PowerSystem sys(100e6, 110e3);
+    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+    sys.addNode(Node::makePQ(2, 40e6, 10e6, 110e3, 0.0, 110e3));
+    
+    // Без сдвига фазы
+    sys.addLine(Line(1, 1, 2, 2.42, 12.1, std::complex<double>(1.0, 0.0)));
+    
+    Solver solver1(sys);
+    auto result1 = solver1.solve();
+    EXPECT_TRUE(result1.converged);
+    
+    auto flows1 = sys.calculateLineFlows();
+    double P_without_shift = flows1[0].S_from.real();
+
+    // С сдвигом фазы -5° (увеличивает поток мощности)
+    // С сдвигом фазы -5° (увеличивает поток мощности)
+    PowerSystem sys2(100e6, 110e3); // ← Новый объект!
+    sys2.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+    sys2.addNode(Node::makePQ(2, 40e6, 10e6, 110e3, 0.0, 110e3));
+
+    double angle_rad = -5.0 * M_PI / 180.0;
+    std::complex<double> k_t(std::cos(angle_rad), std::sin(angle_rad));
+    sys2.addLine(Line(1, 1, 2, 2.42, 12.1, k_t));
+
+    Solver solver2(sys2);  // ← sys2!
+	auto result2 = solver2.solve();
+	EXPECT_TRUE(result2.converged);
+
+	auto flows2 = sys2.calculateLineFlows();  // ← sys2!
+	double P_with_shift = flows2[0].S_from.real();
+
+	// Поток мощности должен измениться
+	EXPECT_NE(P_without_shift, P_with_shift);
+
+	printPowerFlowResults(sys2, "Transformer.PhaseShiftingPowerFlowControl");  // ← sys2!
+}
+
+TEST(Transformer, ComplexTransformerCascade) {
+    // Каскад трансформаторов с комплексными коэффициентами
+    PowerSystem sys(100e6, 220e3);
+    sys.addNode(Node::makeSlack(1, 220e3, 0.0, 220e3));
+    sys.addNode(Node::makePQ(2, 30e6, 10e6, 110e3, 0.0, 110e3));
+    sys.addNode(Node::makePQ(3, 20e6, 8e6, 10e3, 0.0, 10e3));
+    
+    // Первый трансформатор: 220/110 кВ, k=2.0, угол 3°
+    double angle1 = 3.0 * M_PI / 180.0;
+    std::complex<double> k1(2.0 * std::cos(angle1), 2.0 * std::sin(angle1));
+    
+    // Второй трансформатор: 110/10 кВ, k=11.0, угол -2°
+    double angle2 = -2.0 * M_PI / 180.0;
+    std::complex<double> k2(11.0 * std::cos(angle2), 11.0 * std::sin(angle2));
+    
+    sys.addLine(Line(1, 1, 2, 1.0, 5.0, k1));
+    sys.addLine(Line(2, 2, 3, 0.5, 3.0, k2));
+    
+    Solver solver(sys);
+    auto result = solver.solve();
+    
+    EXPECT_TRUE(result.converged);
+    
+    const auto& nodes = sys.getNodes();
+    
+    // Проверка напряжений
+    EXPECT_GT(nodes[1].V_mag(), 100e3);
+    EXPECT_LT(nodes[1].V_mag(), 120e3);
+    
+    EXPECT_GT(nodes[2].V_mag(), 9e3);
+    EXPECT_LT(nodes[2].V_mag(), 11e3);
+    
+    // Проверка баланса
+    auto S_slack = sys.calculateSlackPower();
+    auto flows = sys.calculateLineFlows();
+    
+    std::complex<double> total_loss = flows[0].S_loss + flows[1].S_loss;
+    EXPECT_NEAR(S_slack.real(), 50e6 + total_loss.real(), 1e3);
+    EXPECT_NEAR(S_slack.imag(), 18e6 + total_loss.imag(), 1e3);
+    
+    printPowerFlowResults(sys, "Transformer.ComplexTransformerCascade");
 }

@@ -8,8 +8,8 @@ class Node
 public:
     // Фабрики
     static Node makePQ(NodeId id, double P_spec, double Q_spec,
-                       double V_init, double delta_init = 0.0);
-    static Node makeSlack(NodeId id, double V_set_volts, double delta);
+                       double V_init, double delta_init = 0.0, double V_nom = 110e3);
+    static Node makeSlack(NodeId id, double V_set_volts, double delta, double V_nom = 110e3);
 
     // Геттеры
     NodeId id() const
@@ -33,7 +33,6 @@ public:
     {
         return V_set_;
     } // Заданное напряжение (В) — для Slack
-
     double V_mag() const
     {
         return V_mag_;
@@ -42,7 +41,9 @@ public:
     {
         return delta_;
     } // Фаза напряжения (рад)
-
+	double V_nom() const{
+		return V_nom_;
+	}
     // Сеттеры (для солвера)
     void setV(double V)
     {
@@ -58,6 +59,7 @@ public:
             delta += 2 * M_PI;
         delta_ = delta - M_PI;
     }
+
     // для проверки на включенность
     void disconnect() { enabled_ = false; }
     void connect() { enabled_ = true; }
@@ -65,8 +67,8 @@ public:
 
 private:
     Node(NodeId id, NodeType type, double P_spec, double Q_spec, double V_set,
-         double V_mag, double delta)
-        : id_(id), type_(type), P_spec_(P_spec), Q_spec_(Q_spec), V_set_(V_set), V_mag_(V_mag), delta_(delta) { }
+         double V_mag, double delta, double V_nom)
+        : id_(id), type_(type), P_spec_(P_spec), Q_spec_(Q_spec), V_set_(V_set), V_mag_(V_mag), delta_(delta), V_nom_(V_nom) { }
 
     NodeId id_;
     NodeType type_;
@@ -74,6 +76,7 @@ private:
     double P_spec_;
     double Q_spec_;
     double V_set_;
+	double V_nom_;
 
     double V_mag_;
     double delta_;
@@ -82,12 +85,11 @@ private:
 };
 
 inline Node Node::makePQ(NodeId id, double P_spec, double Q_spec, double V_init,
-                         double delta_init)
-{
-    return Node(id, NodeType::PQ, P_spec, Q_spec, 0.0, V_init, delta_init);
+                         double delta_init, double V_nom) {
+  return Node(id, NodeType::PQ, P_spec, Q_spec, 0.0, V_init, delta_init, V_nom);
 }
 
-inline Node Node::makeSlack(NodeId id, double V_set_volts, double delta)
+inline Node Node::makeSlack(NodeId id, double V_set_volts, double delta, double V_nom)
 {
-    return Node(id, NodeType::SLACK, 0.0, 0.0, V_set_volts, V_set_volts, delta);
+    return Node(id, NodeType::SLACK, 0.0, 0.0, V_set_volts, V_set_volts, delta, V_nom);
 }
