@@ -2,6 +2,7 @@
 
 #include "powersystem.h"
 #include "matrix.h"
+#include "types.h"
 #include <complex>
 #include <cstddef>
 #include <cstdio>
@@ -137,6 +138,10 @@ public:
 			
 			// Проверяем сходимость СРАЗУ после вычисления невязок
 			if (max_mismatch < options_.tolerance){
+				if (checkPVLimits(Y_bus)){
+					i = 0;
+					continue;
+				}
 				//обновляем pq
 				for (size_t j = 0; j < n_pq_; ++j){
 					size_t idx = pq_node_indices_[j];
@@ -161,6 +166,10 @@ public:
 			auto dx = solveLinearSystem(J, mismatches);
 			updateVoltages(dx);
 			last_max_mismatch = max_mismatch;
+			if (checkPVLimits(Y_bus)) {
+				i = 0;
+				continue;
+			}
 		}
 		
 		
@@ -347,4 +356,50 @@ private:
         }
         return dx;
     }
+
+	void convertPVtoPQ(size_t idx, double Q_fixed){
+		system_.getNodes()[idx].setType(NodeType::PQ);
+    	system_.getNodes()[idx].setQ_spec(Q_fixed);
+		
+		types_[idx] = NodeType::PQ;
+		Q_spec_pu_[idx] = -Q_fixed / system_.S_base();
+
+		auto it = std::find(pv_node_indices_.begin(), pv_node_indices_.end(), idx);
+		if (it != pv_node_indices_.end()) {
+			pv_node_indices_.erase(it);
+		}
+
+		pq_node_indices_.push_back(idx);
+		--n_pv_;
+		++n_pq_;
+		std::sort(pq_node_indices_.begin(), pq_node_indices_.end());
+	}
+
+    bool checkPVLimits(const Matrix<std::complex<double>> &Y_bus){
+		std::vector<std::pair<size_t, double>> to_convert;
+		
+		for(auto idx : pv_node_indices_){
+			auto Q_curr = calc_Q_calc(Y_bus, idx) * system_.S_base();
+			
+			std::cout << "PV узел " << idx << ": Q_curr = " << Q_curr / 1e6 << " Мвар, "
+					<< "Q_min = " << system_.getNodes()[idx].Q_min() / 1e6 << " Мвар, "
+					<< "Q_max = " << system_.getNodes()[idx].Q_max() / 1e6 << " Мвар" << std::endl;
+			
+			if (Q_curr > system_.getNodes()[idx].Q_max()){
+				std::cout << "  → Преобразуем в PQ с Q = " << system_.getNodes()[idx].Q_max() / 1e6 << " Мвар" << std::endl;
+				to_convert.push_back({idx, system_.getNodes()[idx].Q_max()});
+			}
+			else if (Q_curr < system_.getNodes()[idx].Q_min()){
+				std::cout << "  → Преобразуем в PQ с Q = " << system_.getNodes()[idx].Q_min() / 1e6 << " Мвар" << std::endl;
+				to_convert.push_back({idx, system_.getNodes()[idx].Q_min()});
+			}
+		}
+		
+		for (const auto& [idx, Q] : to_convert) {
+			convertPVtoPQ(idx, Q);
+			std::cout << "  После преобразования: Q_spec = " << system_.getNodes()[idx].Q_spec() / 1e6 << " Мвар" << std::endl;
+		}
+		
+		return !to_convert.empty();
+	}
 };

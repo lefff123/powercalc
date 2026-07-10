@@ -1366,3 +1366,96 @@ TEST(Reconfiguration, RingNetworkOpenLoop) {
     EXPECT_LT(V3_radial, V3_ring);
     EXPECT_LT(V3_radial, V2_radial);
 }
+
+// ==================== PV Limits ====================
+
+TEST(PVLimits, PVWithoutLimits) {
+    // PV-узел с широкими пределами Q (дефолтные -1e9, 1e9)
+    PowerSystem sys(100e6, 110e3);
+    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+    // Параметры: id, P_spec, V_set, V_init, delta, V_nom, Q_min, Q_max
+    sys.addNode(Node::makePV(2, 50e6, 108e3, 108e3, 0.0, 110e3));  // Q_min и Q_max дефолтные
+    
+    sys.addLine(Line(1, 1, 2, 2.42, 12.1));
+    
+    Solver solver(sys);
+    auto result = solver.solve();
+    
+    EXPECT_TRUE(result.converged);
+    
+    // Узел должен остаться PV
+    EXPECT_EQ(sys.getNode(2).type(), NodeType::PV);
+    
+    printPowerFlowResults(sys, "PVLimits.PVWithoutLimits");
+}
+
+TEST(PVLimits, PVReachesQmax) {
+    // PV-узел достигает Q_max
+    PowerSystem sys(100e6, 110e3);
+    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+    // Параметры: id, P_spec, V_set, V_init, delta, V_nom, Q_min, Q_max
+    sys.addNode(Node::makePV(2, 50e6, 108e3, 108e3, 0.0, 110e3, -10e6, 10e6));  // Q_max = 10 Мвар
+    sys.addNode(Node::makePQ(3, 30e6, 20e6, 110e3, 0.0, 110e3));  // Большая нагрузка
+    
+    sys.addLine(Line(1, 1, 2, 5.0, 25.0));
+    sys.addLine(Line(2, 2, 3, 4.0, 20.0));
+    
+    Solver solver(sys);
+    auto result = solver.solve();
+    
+    EXPECT_TRUE(result.converged);
+    
+    // Узел 2 должен преобразоваться в PQ с Q = Q_max
+    EXPECT_EQ(sys.getNode(2).type(), NodeType::PQ);
+    EXPECT_NEAR(sys.getNode(2).Q_spec(), 10e6, 1e3);
+    
+    printPowerFlowResults(sys, "PVLimits.PVReachesQmax");
+}
+
+TEST(PVLimits, PVReachesQmin) {
+    // PV-узел достигает Q_min
+    PowerSystem sys(100e6, 110e3);
+    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+    // Параметры: id, P_spec, V_set, V_init, delta, V_nom, Q_min, Q_max
+    sys.addNode(Node::makePV(2, 50e6, 108e3, 108e3, 0.0, 110e3, -5e6, 50e6));  // Q_min = -5 Мвар
+    sys.addNode(Node::makePQ(3, 10e6, -15e6, 110e3, 0.0, 110e3));  // Ёмкостная нагрузка
+    
+    sys.addLine(Line(1, 1, 2, 5.0, 25.0));
+    sys.addLine(Line(2, 2, 3, 4.0, 20.0));
+    
+    Solver solver(sys);
+    auto result = solver.solve();
+    
+    EXPECT_TRUE(result.converged);
+    
+    // Узел 2 должен преобразоваться в PQ с Q = Q_min
+    EXPECT_EQ(sys.getNode(2).type(), NodeType::PQ);
+    EXPECT_NEAR(sys.getNode(2).Q_spec(), -5e6, 1e3);
+    
+    printPowerFlowResults(sys, "PVLimits.PVReachesQmin");
+}
+
+TEST(PVLimits, CascadingConversion) {
+    // Каскадное преобразование двух PV-узлов
+    PowerSystem sys(100e6, 110e3);
+    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+    // Параметры: id, P_spec, V_set, V_init, delta, V_nom, Q_min, Q_max
+    sys.addNode(Node::makePV(2, 30e6, 108e3, 108e3, 0.0, 110e3, -5e6, 5e6));
+    sys.addNode(Node::makePV(3, 30e6, 108e3, 108e3, 0.0, 110e3, -5e6, 5e6));
+    sys.addNode(Node::makePQ(4, 50e6, 30e6, 110e3, 0.0, 110e3));
+    
+    sys.addLine(Line(1, 1, 2, 5.0, 25.0));
+    sys.addLine(Line(2, 2, 3, 4.0, 20.0));
+    sys.addLine(Line(3, 3, 4, 3.0, 15.0));
+    
+    Solver solver(sys);
+    auto result = solver.solve();
+    
+    EXPECT_TRUE(result.converged);
+    
+    // Оба PV должны преобразоваться в PQ
+    EXPECT_EQ(sys.getNode(2).type(), NodeType::PQ);
+    EXPECT_EQ(sys.getNode(3).type(), NodeType::PQ);
+    
+    printPowerFlowResults(sys, "PVLimits.CascadingConversion");
+}
