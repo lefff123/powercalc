@@ -115,7 +115,7 @@ public:
     Result solve(){
 		Matrix<std::complex<double>> Y_bus = system_.buildYBus();
 		system_.validate();
-		
+		double last_max_mismatch = 0.;
 		for (size_t i = 0; i < options_.max_iterations; ++i){
 			auto mismatches = calculateMismatches(Y_bus);
 			
@@ -160,11 +160,12 @@ public:
 			auto J = buildJacobian(Y_bus);
 			auto dx = solveLinearSystem(J, mismatches);
 			updateVoltages(dx);
+			last_max_mismatch = max_mismatch;
 		}
 		
 		
 
-		return Result(false, options_.max_iterations, 0.0);
+		return Result(false, options_.max_iterations, last_max_mismatch);
 	}
 	
 	std::vector<double> calculateMismatches(const Matrix<std::complex<double>> &Y_bus) const

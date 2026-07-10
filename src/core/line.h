@@ -4,8 +4,11 @@
 #include <stdexcept>
 #include <complex>
 
+class PowerSystem;
+
 class Line
 {
+	friend class PowerSystem;
 public:
     // Конструктор линии
     // R, X — в Омах, k_t — коэффициент трансформации (для линии = 1.0)
@@ -35,9 +38,6 @@ public:
     std::complex<double> k_t() const { return k_t_; } // Коэффициент трансформации
 	std::complex<double> Y() const { return Y_; }
 
-    // для проверки на включенность
-    void disconnect() { enabled_ = false; }
-    void connect() { enabled_ = true; }
     bool isEnabled() const { return enabled_; }
 	bool istransformer () const { return is_transformer_; }
 
@@ -53,4 +53,8 @@ private:
 
     bool enabled_ = true;
 	bool is_transformer_ = false;
+
+	// для переключения
+    void disconnect()  { enabled_ = false; }
+    void connect() { enabled_ = true; }
 };

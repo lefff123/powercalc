@@ -81,6 +81,15 @@ public:
         }
         return lines_[*idx]; // *idx — разыменовываем optional
     }
+
+	Line &getLine(LineId id) 
+    {
+        auto idx = findLineIndex(id);
+        if (!idx.has_value()) {
+            throw std::out_of_range("Node not found: " + std::to_string(id));
+        }
+        return lines_[*idx]; // *idx — разыменовываем optional
+    }
     std::vector<Node> &getNodes()
     {
         return nodes_;
@@ -308,6 +317,26 @@ public:
 		
 		// Переводим в ВА
 		return S_slack_pu * S_base_;
+	}
+
+	// Отключение линии с инвалидацией кэша
+	void disconnectLine(LineId id) {
+		auto idx = findLineIndex(id);
+		if (!idx.has_value()) {
+			throw std::out_of_range("Line not found: " + std::to_string(id));
+		}
+		lines_[*idx].disconnect();
+		base_voltages_valid_ = false;  //  Сбрасываем кэш
+	}
+
+	// Включение линии с инвалидацией кэша
+	void connectLine(LineId id) {
+		auto idx = findLineIndex(id);
+		if (!idx.has_value()) {
+			throw std::out_of_range("Line not found: " + std::to_string(id));
+		}
+		lines_[*idx].connect();
+		base_voltages_valid_ = false;  // Сбрасываем кэш
 	}
 private:
     std::vector<Node> nodes_;

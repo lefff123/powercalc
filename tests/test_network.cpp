@@ -1063,3 +1063,306 @@ TEST(Shunt, ComplexShuntWithConductance) {
     
     printPowerFlowResults(sys, "Shunt.ComplexShuntWithConductance");
 }
+
+// ==================== Network Reconfiguration ====================
+
+
+TEST(Reconfiguration, DisconnectOneOfParallelLines) {
+	
+    // Две параллельные линии между узлами 1 и 2.
+    // Отключаем одну — сеть должна работать, но с худшими параметрами.
+    PowerSystem sys(100e6, 110e3);
+    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+    sys.addNode(Node::makePQ(2, 50e6, 20e6, 110e3, 0.0, 110e3));
+    
+    // Две одинаковые линии параллельно
+    sys.addLine(Line(1, 1, 2, 2.42, 12.1));
+    sys.addLine(Line(2, 1, 2, 2.42, 12.1));
+    
+    Solver solver(sys);
+    
+    // Сначала считаем с двумя линиями
+    auto result1 = solver.solve();
+    EXPECT_TRUE(result1.converged);
+    
+    double V_before = sys.getNode(2).V_mag();
+    double delta_before = sys.getNode(2).delta();
+    
+    auto flows_before = sys.calculateLineFlows();
+    double P_loss_before = flows_before[0].S_loss.real() + flows_before[1].S_loss.real();
+    
+    printPowerFlowResults(sys, "Reconfig.BeforeDisconnect");
+    
+    // Отключаем одну линию
+    sys.disconnectLine(2);
+
+    // Пересоздаём солвер (т.к. он кэширует данные)
+    Solver solver2(sys);
+    auto result2 = solver2.solve();
+    
+    // Должен сойтись
+    EXPECT_TRUE(result2.converged);
+    
+    double V_after = sys.getNode(2).V_mag();
+    double delta_after = sys.getNode(2).delta();
+    
+    auto flows_after = sys.calculateLineFlows();
+    // Только одна активная линия
+    double P_loss_after = 0;
+    for (const auto& f : flows_after) {
+        if (sys.getLine(f.line_id).isEnabled()) {
+            P_loss_after += f.S_loss.real();
+        }
+    }
+    
+    printPowerFlowResults(sys, "Reconfig.AfterDisconnect");
+    
+    // Физические проверки:
+    // 1. Напряжение должно упасть (сопротивление выросло в 2 раза)
+    EXPECT_LT(V_after, V_before);
+    
+    // 2. Угол должен стать больше по модулю (больше δ для передачи той же мощности)
+    EXPECT_LT(delta_after, delta_before);
+    
+    // 3. Потери должны вырасти (примерно в 2 раза для одинаковых линий)
+    EXPECT_GT(P_loss_after, P_loss_before * 1.5);
+    EXPECT_LT(P_loss_after, P_loss_before * 3.0);
+}
+
+TEST(Reconfiguration, DisconnectAndReconnect) {
+    // Отключение и повторное включение должно возвращать систему в исходное состояние
+    PowerSystem sys(100e6, 110e3);
+    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+    sys.addNode(Node::makePQ(2, 50e6, 20e6, 110e3, 0.0, 110e3));
+    
+    sys.addLine(Line(1, 1, 2, 2.42, 12.1));
+    sys.addLine(Line(2, 1, 2, 2.42, 12.1));
+    
+    // Считаем исходный режим
+    Solver solver1(sys);
+    solver1.solve();
+    double V_original = sys.getNode(2).V_mag();
+    double delta_original = sys.getNode(2).delta();
+    
+    // Отключаем линию
+    sys.disconnectLine(2);
+    Solver solver2(sys);
+    solver2.solve();
+    
+    // Включаем обратно
+    sys.connectLine(2);
+    Solver solver3(sys);
+    solver3.solve();
+    
+    double V_restored = sys.getNode(2).V_mag();
+    double delta_restored = sys.getNode(2).delta();
+    
+    // Должно вернуться к исходному состоянию
+    EXPECT_NEAR(V_restored, V_original, 1e-3);
+    EXPECT_NEAR(delta_restored, delta_original, 1e-6);
+}
+
+TEST(Reconfiguration, DisconnectOnlyLineThrows) {
+    // Если отключить единственную линию, сеть станет несвязной
+    PowerSystem sys(100e6, 110e3);
+    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+    sys.addNode(Node::makePQ(2, 50e6, 20e6, 110e3, 0.0, 110e3));
+    
+    sys.addLine(Line(1, 1, 2, 2.42, 12.1));
+
+    sys.disconnectLine(1);
+
+    // Должно бросить исключение о несвязной сети
+    EXPECT_THROW(sys.buildYBus(), std::runtime_error);
+}
+
+TEST(Reconfiguration, DisconnectLineToLoadNode) {
+    // Трёхузловая сеть. Отключаем линию к узлу с нагрузкой.
+    // Узел 3 станет изолированным → исключение.
+    PowerSystem sys(100e6, 110e3);
+    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+    sys.addNode(Node::makePQ(2, 30e6, 10e6, 110e3, 0.0, 110e3));
+    sys.addNode(Node::makePQ(3, 20e6, 8e6, 110e3, 0.0, 110e3));
+    
+    sys.addLine(Line(1, 1, 2, 5.0, 25.0));
+    sys.addLine(Line(2, 2, 3, 4.0, 20.0));  // Единственная связь с узлом 3
+    
+    // Сначала всё работает
+    Solver solver1(sys);
+    auto result = solver1.solve();
+    EXPECT_TRUE(result.converged);
+    
+    // Отключаем линию 2-3
+    sys.disconnectLine(2);
+
+    // Теперь сеть несвязная
+    EXPECT_THROW(sys.buildYBus(), std::runtime_error);
+}
+
+TEST(Reconfiguration, SequentialDisconnections) {
+    // Каскадное отключение: одна за другой
+    PowerSystem sys(100e6, 110e3);
+    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+    sys.addNode(Node::makePQ(2, 30e6, 10e6, 110e3, 0.0, 110e3));
+    sys.addNode(Node::makePQ(3, 25e6, 8e6, 110e3, 0.0, 110e3));
+    
+    // Три параллельные линии между 1 и 2
+    sys.addLine(Line(1, 1, 2, 10.0, 50.0));
+    sys.addLine(Line(2, 1, 2, 10.0, 50.0));
+    sys.addLine(Line(3, 1, 2, 10.0, 50.0));
+    
+    // Линия 2-3
+    sys.addLine(Line(4, 2, 3, 8.0, 40.0));
+    
+    // Считаем с тремя линиями
+    Solver solver1(sys);
+    solver1.solve();
+    double V2_initial = sys.getNode(2).V_mag();
+    
+    // Отключаем одну
+    sys.disconnectLine(1);
+    Solver solver2(sys);
+    solver2.solve();
+    double V2_after1 = sys.getNode(2).V_mag();
+    
+    // Отключаем вторую
+    sys.disconnectLine(2);
+    Solver solver3(sys);
+    solver3.solve();
+    double V2_after2 = sys.getNode(2).V_mag();
+    
+    // Напряжение должно последовательно падать
+    EXPECT_GT(V2_initial, V2_after1);
+    EXPECT_GT(V2_after1, V2_after2);
+    
+    // Отключаем третью — сеть станет несвязной
+    sys.disconnectLine(3);
+    EXPECT_THROW(sys.buildYBus(), std::runtime_error);
+}
+
+TEST(Reconfiguration, DisconnectTransformer) {
+    // Отключение трансформатора
+    PowerSystem sys(100e6, 110e3);
+    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+    sys.addNode(Node::makePQ(2, 20e6, 10e6, 10e3, 0.0, 10e3));
+    
+    // Два параллельных трансформатора
+    sys.addLine(Line(1, 1, 2, 0.5, 10.0, 
+                                       std::complex<double>(11.0, 0.0)));
+    sys.addLine(Line(2, 1, 2, 0.5, 10.0, 
+                                       std::complex<double>(11.0, 0.0)));
+    
+    Solver solver1(sys);
+    solver1.solve();
+    double V2_before = sys.getNode(2).V_mag();
+    
+    // Отключаем один трансформатор
+    sys.disconnectLine(2);
+    
+    Solver solver2(sys);
+    auto result = solver2.solve();
+    
+    EXPECT_TRUE(result.converged);
+    
+    double V2_after = sys.getNode(2).V_mag();
+    
+    // Напряжение должно упасть (импеданс вырос)
+    EXPECT_LT(V2_after, V2_before);
+    
+    printPowerFlowResults(sys, "Reconfig.TransformerDisconnect");
+}
+
+TEST(Reconfiguration, VoltageCollapseApproach) {
+    // Тестируем приближение к пределу по напряжению
+    // Постепенно увеличиваем нагрузку и отключаем линии
+    PowerSystem sys(100e6, 110e3);
+    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+    sys.addNode(Node::makePQ(2, 10e6, 4e6, 110e3, 0.0, 110e3));
+    
+    sys.addLine(Line(1, 1, 2, 2.42, 12.1));
+    sys.addLine(Line(2, 1, 2, 2.42, 12.1));
+    
+    std::vector<double> loads = {10e6, 30e6, 50e6, 70e6, 90e6};
+    
+    for (size_t load_idx = 0; load_idx < loads.size(); ++load_idx) {
+        double load = loads[load_idx];
+        
+        // Обновляем нагрузку (пересоздаём узел)
+        sys.getNode(2) = Node::makePQ(2, load, load * 0.4, 110e3, 0.0, 110e3);
+        
+        // При чётных индексах — обе линии, при нечётных — одна
+        if (load_idx % 2 == 1) {
+          sys.disconnectLine(2);
+        } else {
+          sys.connectLine(2);
+        }
+        
+        Solver solver(sys);
+        auto result = solver.solve();
+        
+        if (result.converged) {
+            double V = sys.getNode(2).V_mag();
+            std::cout << "Load = " << load / 1e6 << " МВт, "
+                      << (load_idx % 2 == 0 ? "2 lines" : "1 line") << ": "
+                      << "V = " << V / 1000.0 << " кВ, "
+                      << "converged in " << result.iterations << " iterations" << std::endl;
+            
+            // Напряжение должно быть в разумных пределах
+            EXPECT_GT(V, 70e3);
+            EXPECT_LT(V, 115e3);
+        } else {
+            std::cout << "Load = " << load / 1e6 << " МВт: НЕ СОШЕЛСЯ" << std::endl;
+        }
+    }
+}
+
+TEST(Reconfiguration, RingNetworkOpenLoop) {
+    PowerSystem sys(100e6, 110e3);
+    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+    sys.addNode(Node::makePQ(2, 20e6, 7.5e6, 110e3, 0.0, 110e3));  // Было 40/15
+    sys.addNode(Node::makePQ(3, 15e6, 5e6, 110e3, 0.0, 110e3));   // Было 30/10
+    
+    sys.addLine(Line(1, 1, 2, 10.0, 50.0));
+    sys.addLine(Line(2, 2, 3, 8.0, 40.0));
+    sys.addLine(Line(3, 3, 1, 12.0, 60.0));
+    
+    std::cout << "\n=== Считаем кольцевую сеть ===" << std::endl;
+    
+    Solver solver1(sys);
+    auto result1 = solver1.solve();
+    
+    std::cout << "Converged: " << result1.converged << std::endl;
+    std::cout << "Iterations: " << result1.iterations << std::endl;
+    std::cout << "Max mismatch: " << result1.max_mismatch << std::endl;
+    
+    EXPECT_TRUE(result1.converged);
+    
+    double V2_ring = sys.getNode(2).V_mag();
+    double V3_ring = sys.getNode(3).V_mag();
+    
+    printPowerFlowResults(sys, "Reconfig.RingBefore");
+    
+    // Размыкаем кольцо
+    sys.disconnectLine(3);
+    
+    std::cout << "\n=== Считаем радиальную сеть ===" << std::endl;
+    
+    Solver solver2(sys);
+    auto result2 = solver2.solve();
+    
+    std::cout << "Converged: " << result2.converged << std::endl;
+    std::cout << "Iterations: " << result2.iterations << std::endl;
+    std::cout << "Max mismatch: " << result2.max_mismatch << std::endl;
+    
+    EXPECT_TRUE(result2.converged);
+    
+    double V2_radial = sys.getNode(2).V_mag();
+    double V3_radial = sys.getNode(3).V_mag();
+    
+    printPowerFlowResults(sys, "Reconfig.RingAfter");
+    
+    // Физические проверки
+    EXPECT_LT(V2_radial, V2_ring);
+    EXPECT_LT(V3_radial, V3_ring);
+    EXPECT_LT(V3_radial, V2_radial);
+}
