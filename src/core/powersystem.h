@@ -157,6 +157,30 @@ public:
 		recalculateBaseVoltages();
 		return node.V_mag() /  V_base_per_node_[getNodeIndex(node.id())];
 	}
+	std::complex<double> Y_shunt_from_oe(const Line& line) const {
+		size_t i = getNodeIndex(line.from());
+		double Y_base = S_base_ / (V_base_per_node_[i] * V_base_per_node_[i]);
+			if (line.istransformer()) {
+				// Г-образная: весь шунт со стороны from
+				return line.Y() / Y_base;
+			} else {
+				// Π-образная: шунт делится пополам
+				return (line.Y() / 2.0) / Y_base;
+			}
+	}
+	std::complex<double> Y_shunt_to_oe(const Line& line) const {
+		size_t j = getNodeIndex(line.to());
+		double Y_base = S_base_ / (V_base_per_node_[j] * V_base_per_node_[j]);
+		
+		if (line.istransformer()) {
+			// Г-образная: шунта со стороны Т нет
+			return std::complex<double>(0.0, 0.0);
+		} else {
+			// Π-образная: шунт делится пополам
+			return (line.Y() / 2.0) / Y_base;
+		}
+	}
+
 
     // Валидация сети
     void validate() const
@@ -197,6 +221,10 @@ public:
             // недиагональные элементы
             Y_bus(idx_from, idx_to) -= y / k_pu_conj; // Y_ij = -y / k_pu*
             Y_bus(idx_to, idx_from) -= y / k_pu;      // Y_ji = -y / k_pu
+
+			//шунтовые проводимости
+            Y_bus(idx_from, idx_from) += Y_shunt_from_oe(line); // Y_ii = y / |k_pu|²
+            Y_bus(idx_to, idx_to) += Y_shunt_to_oe(line);     // Y_jj = y
         }
         return Y_bus;
     }
@@ -221,7 +249,7 @@ public:
 		std::vector<LineFlows> flows;
 		flows.reserve(lines_.size());
 		for (auto line : lines_){
-			
+			if (!line.isEnabled()) continue;
 			//находим индексы точек по id
 			size_t i = getNodeIndex(line.from());
 			size_t j = getNodeIndex(line.to());
@@ -238,9 +266,9 @@ public:
 			//Подготовим данные к расчету
 			std::complex<double> y = Y_oe(line);
 
-			// Токи по Π-модели
-			auto I_from = (y / k_pu_abs_sq) * V_i - (y / k_pu_conj) * V_j;
-			auto I_to = -(y / k_pu) * V_i + y * V_j;
+			// Токи 
+			auto I_from = (y / k_pu_abs_sq) * V_i - (y / k_pu_conj) * V_j + Y_shunt_from_oe(line)*V_i;
+			auto I_to = -(y / k_pu) * V_i + y * V_j + Y_shunt_to_oe(line) * V_j;
 			auto S_from_pu = V_i * std::conj(I_from);
 			auto S_to_pu = V_j * std::conj(I_to);
 			flows.push_back(LineFlows(line.id(), line.from(), line.to(), S_from_pu * S_base_, S_to_pu * S_base_, (S_from_pu + S_to_pu) * S_base_));
@@ -363,5 +391,3 @@ private:
 		base_voltages_valid_ = true;
 	}
 };
-
-	

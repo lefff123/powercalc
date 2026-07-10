@@ -937,3 +937,129 @@ TEST(Solver, PVNodePowerBalance) {
     // Баланс: генерация = нагрузка + потери
     EXPECT_NEAR(P_gen_total, P_load + total_loss.real(), 1e3);
 }
+
+// ==================== Shunt Admittance ====================
+
+TEST(Shunt, LineWithShuntNoLoad) {
+    // Линия с шунтом без нагрузки
+    PowerSystem sys(100e6, 110e3);
+    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+    sys.addNode(Node::makePQ(2, 0.0, 0.0, 110e3, 0.0, 110e3));
+    
+    // Линия с шунтом Y = 0 + j0.001 См (Π-образная, делится пополам)
+    sys.addLine(Line(1, 1, 2, 2.42, 12.1, std::complex<double>(1.0, 0.0), 
+                     std::complex<double>(0.0, 0.001)));
+    
+    Solver solver(sys);
+    auto result = solver.solve();
+    
+    EXPECT_TRUE(result.converged);
+    
+    const auto& nodes = sys.getNodes();
+    // Без нагрузки напряжения близки к 110 кВ
+    EXPECT_NEAR(nodes[1].V_mag(), 110e3, 1e3);
+    
+    printPowerFlowResults(sys, "Shunt.LineWithShuntNoLoad");
+}
+
+TEST(Shunt, LineWithShuntAndLoad) {
+    // Линия с шунтом и нагрузкой
+    PowerSystem sys(100e6, 110e3);
+    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+    sys.addNode(Node::makePQ(2, 50e6, 20e6, 110e3, 0.0, 110e3));
+    
+    // Линия с шунтом Y = 0 + j0.0005 См
+    sys.addLine(Line(1, 1, 2, 2.42, 12.1, std::complex<double>(1.0, 0.0), 
+                     std::complex<double>(0.0, 0.0005)));
+    
+    Solver solver(sys);
+    auto result = solver.solve();
+    
+    EXPECT_TRUE(result.converged);
+    
+    // Сверить с pandapower
+    const auto& nodes = sys.getNodes();
+    // checkNodeVoltage(nodes[1], expected_V, expected_delta);
+    
+    printPowerFlowResults(sys, "Shunt.LineWithShuntAndLoad");
+}
+
+TEST(Shunt, TransformerWithShunt) {
+    // Трансформатор с шунтом (Г-образная схема)
+    PowerSystem sys(100e6, 110e3);
+    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+    sys.addNode(Node::makePQ(2, 20e6, 10e6, 10e3, 0.0, 10e3));
+    
+    // Трансформатор 110/10 кВ с шунтом на стороне ВН
+    auto tr = Line(1, 1, 2, 0.5, 10.0, 
+                                     std::complex<double>(11.0, 0.0),
+                                     std::complex<double>(0.0, 0.0001));
+    sys.addLine(tr);
+    
+    Solver solver(sys);
+    auto result = solver.solve();
+    
+    EXPECT_TRUE(result.converged);
+    
+    const auto& nodes = sys.getNodes();
+    EXPECT_GT(nodes[1].V_mag(), 9e3);
+    EXPECT_LT(nodes[1].V_mag(), 11e3);
+    
+    printPowerFlowResults(sys, "Shunt.TransformerWithShunt");
+}
+
+TEST(Shunt, PowerBalanceWithShunt) {
+    // Баланс мощностей с шунтом
+    PowerSystem sys(100e6, 110e3);
+    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+    sys.addNode(Node::makePQ(2, 30e6, 10e6, 110e3, 0.0, 110e3));
+    
+    sys.addLine(Line(1, 1, 2, 5.0, 25.0, std::complex<double>(1.0, 0.0), 
+                     std::complex<double>(0.0, 0.001)));
+    
+    Solver solver(sys);
+    solver.solve();
+    
+    auto S_slack = sys.calculateSlackPower();
+    auto flows = sys.calculateLineFlows();
+    
+    // Баланс P: генерация = нагрузка + потери
+    EXPECT_NEAR(S_slack.real(), 30e6 + flows[0].S_loss.real(), 1e3);
+    
+    printPowerFlowResults(sys, "Shunt.PowerBalanceWithShunt");
+}
+
+TEST(Shunt, BackwardCompatibility) {
+    // Линия без шунта должна давать тот же результат
+    PowerSystem sys(100e6, 110e3);
+    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+    sys.addNode(Node::makePQ(2, 50e6, 20e6, 110e3, 0.0, 110e3));
+    
+    sys.addLine(Line(1, 1, 2, 2.42, 12.1));  // Y_shunt = 0 по умолчанию
+    
+    Solver solver(sys);
+    auto result = solver.solve();
+    
+    EXPECT_TRUE(result.converged);
+    
+    const auto& nodes = sys.getNodes();
+    checkNodeVoltage(nodes[1], 106.4662, -2.7241);
+}
+
+TEST(Shunt, ComplexShuntWithConductance) {
+    // Шунт с активной проводимостью (G + jB)
+    PowerSystem sys(100e6, 110e3);
+    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+    sys.addNode(Node::makePQ(2, 50e6, 20e6, 110e3, 0.0, 110e3));
+    
+    // Шунт с G = 0.0001 См, B = 0.0005 См
+    sys.addLine(Line(1, 1, 2, 2.42, 12.1, std::complex<double>(1.0, 0.0), 
+                     std::complex<double>(0.0001, 0.0005)));
+    
+    Solver solver(sys);
+    auto result = solver.solve();
+    
+    EXPECT_TRUE(result.converged);
+    
+    printPowerFlowResults(sys, "Shunt.ComplexShuntWithConductance");
+}
