@@ -46,6 +46,8 @@ public:
         is_slack_.resize(n);
         n_pq_ = 0;
         pq_node_indices_.clear();
+		n_pv_ = 0;
+		pv_node_indices_.clear();
 
         for (size_t i = 0; i < n; ++i) {
             V_mag_[i] = nodes[i].V_mag() / system_.V_base(nodes[i].id());
@@ -53,12 +55,17 @@ public:
             types_[i] = nodes[i].type();
             is_slack_[i] = (types_[i] == NodeType::SLACK);
 
-            if (is_slack_[i]) {
+            if (types_[i] == NodeType::SLACK) {
                 P_spec_pu_[i] = 0.0;
                 Q_spec_pu_[i] = 0.0;
-            } else {
-                P_spec_pu_[i] += system_.P_oe(nodes[i]);
-                Q_spec_pu_[i] += system_.Q_oe(nodes[i]);
+            } else if (types_[i] == NodeType::PV) {
+				P_spec_pu_[i] += system_.P_oe(nodes[i]);
+                Q_spec_pu_[i] = 0.;
+                pv_node_indices_.push_back(i); // ← Запоминаем индекс PQ-узла
+                n_pv_++;
+			} else if (types_[i] == NodeType::PQ) {
+                P_spec_pu_[i] -= system_.P_oe(nodes[i]);
+                Q_spec_pu_[i] -= system_.Q_oe(nodes[i]);
                 pq_node_indices_.push_back(i); // ← Запоминаем индекс PQ-узла
                 n_pq_++;
             }
@@ -79,6 +86,8 @@ public:
         is_slack_.resize(n);
         n_pq_ = 0;
         pq_node_indices_.clear();
+        n_pv_ = 0;
+        pv_node_indices_.clear();
 
         for (size_t i = 0; i < n; ++i) {
             V_mag_[i] = nodes[i].V_mag() / system_.V_base(nodes[i].id());
@@ -86,10 +95,15 @@ public:
             types_[i] = nodes[i].type();
             is_slack_[i] = (types_[i] == NodeType::SLACK);
 
-            if (is_slack_[i]) {
+            if (types_[i] == NodeType::SLACK) {
                 P_spec_pu_[i] = 0.0;
                 Q_spec_pu_[i] = 0.0;
-            } else {
+            } else if (types_[i] == NodeType::PV) {
+				P_spec_pu_[i] += system_.P_oe(nodes[i]);
+                Q_spec_pu_[i] = 0.;
+                pv_node_indices_.push_back(i); // ← Запоминаем индекс PQ-узла
+                n_pv_++;
+			} else if (types_[i] == NodeType::PQ) {
                 P_spec_pu_[i] -= system_.P_oe(nodes[i]);
                 Q_spec_pu_[i] -= system_.Q_oe(nodes[i]);
                 pq_node_indices_.push_back(i); // ← Запоминаем индекс PQ-узла
@@ -123,10 +137,22 @@ public:
 			
 			// Проверяем сходимость СРАЗУ после вычисления невязок
 			if (max_mismatch < options_.tolerance){
+				//обновляем pq
 				for (size_t j = 0; j < n_pq_; ++j){
 					size_t idx = pq_node_indices_[j];
 					system_.getNodes()[idx].setV(V_mag_[idx] * system_.V_base(system_.getNodes()[idx].id()));
 					system_.getNodes()[idx].setDelta(delta_[idx]);
+				}
+
+				//обновляем pv
+				for (size_t j = 0; j < n_pv_; ++j){
+					size_t idx = pv_node_indices_[j];
+					system_.getNodes()[idx].setDelta(delta_[idx]);
+				}
+
+				//обновляем Q для pv узлов
+				for (auto idx : pv_node_indices_){
+					Q_spec_pu_[idx] = calc_Q_calc(Y_bus, idx);
 				}
 				return Result(true, i, max_mismatch); // i, а не i+1, т.к. итерация не понадобилась
 			}
@@ -136,18 +162,18 @@ public:
 			updateVoltages(dx);
 		}
 		
+		
+
 		return Result(false, options_.max_iterations, 0.0);
 	}
 	
 	std::vector<double> calculateMismatches(const Matrix<std::complex<double>> &Y_bus) const
 		{
-			std::vector<double> mismatches(2 * n_pq_, 0.);
+			std::vector<double> mismatches(2 * n_pq_ + n_pv_, 0.);
 			size_t pq_indx = 0;
 			// считаем p
-			for (size_t ii = 0; ii < n_pq_; ++ii) {
-				size_t i = pq_node_indices_[ii];
-				if (is_slack_[i])
-					continue; // пропускаем базу
+			for (size_t ii = 0; ii < n_pq_+ n_pv_; ++ii) {
+				size_t i = (ii < n_pq_) ? pq_node_indices_[ii] : pv_node_indices_[ii - n_pq_];
 				double calced = calc_P_calc(Y_bus, i);
 				mismatches[pq_indx] = P_spec_pu_[i] - calced;
 				++pq_indx;
@@ -155,8 +181,6 @@ public:
 			// считаем Q
 			for (size_t ii = 0; ii < n_pq_; ++ii) {
 				size_t i = pq_node_indices_[ii];
-				if (is_slack_[i])
-					continue; // пропускаем базу
 				double calced = calc_Q_calc(Y_bus, i);
 				mismatches[pq_indx] = Q_spec_pu_[i] - calced;
 				++pq_indx;
@@ -177,6 +201,8 @@ private:
     std::vector<bool> is_slack_; // Флаг: узел Slack?
     size_t n_pq_ = 0; // Количество PQ-узлов
     std::vector<size_t> pq_node_indices_; // массив номеров элементов в матрице Якоби
+	size_t n_pv_ = 0; //Количество PV-узлов
+	std::vector<size_t> pv_node_indices_; //массив номеров PV узлов в матрице Якоби
 
     // Вспомогательные методы
     double calc_P_calc(const Matrix<std::complex<double>> &Y_bus, const size_t i) const
@@ -201,16 +227,22 @@ private:
     }
     Matrix<double> buildJacobian(const Matrix<std::complex<double>> &Y_bus) const
     {
-        Matrix<double> J(2 * n_pq_, 2 * n_pq_);
+        Matrix<double> J(2 * n_pq_ + n_pv_, 2 * n_pq_ + n_pv_);
+		std::vector<size_t> all_non_slack(pq_node_indices_);
+		size_t n_non_slack = n_pq_ + n_pv_;
+		all_non_slack.reserve(pq_node_indices_.size()+pv_node_indices_.size());
+		for (auto el : pv_node_indices_){
+			all_non_slack.push_back(el);
+		}
         /*
             Якобиан формируется как матрица = (H N
                                                M L)
         */
         // make H
-        for (size_t ii = 0; ii < n_pq_; ++ii) {
-            size_t i = pq_node_indices_[ii];
-            for (size_t jj = 0; jj < n_pq_; ++jj) {
-                size_t j = pq_node_indices_[jj];
+        for (size_t ii = 0; ii < all_non_slack.size(); ++ii) {
+            size_t i = all_non_slack[ii];
+            for (size_t jj = 0; jj < all_non_slack.size(); ++jj) {
+                size_t j = all_non_slack[jj];
                 if (ii == jj) {
                     J(ii, jj) = -calc_Q_calc(Y_bus, i) - V_mag_[i] * V_mag_[j] * Y_bus(i, j).imag();
                 } else {
@@ -219,26 +251,26 @@ private:
             }
         }
         // make N
-        for (size_t ii = 0; ii < n_pq_; ++ii) {
-            size_t i = pq_node_indices_[ii];
+        for (size_t ii = 0; ii < all_non_slack.size(); ++ii) {
+            size_t i = all_non_slack[ii];
             for (size_t jj = 0; jj < n_pq_; ++jj) {
                 size_t j = pq_node_indices_[jj];
-                if (ii == jj) {
-                    J(ii, jj + n_pq_) = calc_P_calc(Y_bus, i) / V_mag_[i] + V_mag_[i] * Y_bus(i, j).real();
+                if (i == j) {
+                    J(ii, jj + n_non_slack) = calc_P_calc(Y_bus, i) / V_mag_[i] + V_mag_[i] * Y_bus(i, j).real();
                 } else {
-                    J(ii, jj + n_pq_) = V_mag_[i] * (Y_bus(i, j).real() * std::cos(delta_[i] - delta_[j]) + Y_bus(i, j).imag() * std::sin(delta_[i] - delta_[j]));
+                    J(ii, jj + n_non_slack) = V_mag_[i] * (Y_bus(i, j).real() * std::cos(delta_[i] - delta_[j]) + Y_bus(i, j).imag() * std::sin(delta_[i] - delta_[j]));
                 }
             }
         }
         // make M
         for (size_t ii = 0; ii < n_pq_; ++ii) {
             size_t i = pq_node_indices_[ii];
-            for (size_t jj = 0; jj < n_pq_; ++jj) {
-                size_t j = pq_node_indices_[jj];
-                if (ii == jj) {
-                    J(ii + n_pq_, jj) = calc_P_calc(Y_bus, i) - V_mag_[i] * V_mag_[j] * Y_bus(i, j).real();
+            for (size_t jj = 0; jj < all_non_slack.size(); ++jj) {
+                size_t j = all_non_slack[jj];
+                if (i == j) {
+                    J(ii + n_non_slack, jj) = calc_P_calc(Y_bus, i) - V_mag_[i] * V_mag_[j] * Y_bus(i, j).real();
                 } else {
-                    J(ii + n_pq_, jj) = -V_mag_[i] * V_mag_[j] * (Y_bus(i, j).real() * std::cos(delta_[i] - delta_[j]) + Y_bus(i, j).imag() * std::sin(delta_[i] - delta_[j]));
+                    J(ii + n_non_slack, jj) = -V_mag_[i] * V_mag_[j] * (Y_bus(i, j).real() * std::cos(delta_[i] - delta_[j]) + Y_bus(i, j).imag() * std::sin(delta_[i] - delta_[j]));
                 }
             }
         }
@@ -248,9 +280,9 @@ private:
             for (size_t jj = 0; jj < n_pq_; ++jj) {
                 size_t j = pq_node_indices_[jj];
                 if (ii == jj) {
-                    J(ii + n_pq_, jj + n_pq_) = calc_Q_calc(Y_bus, i) / V_mag_[i] - V_mag_[i] * Y_bus(i, j).imag();
+                    J(ii + n_non_slack, jj + n_non_slack) = calc_Q_calc(Y_bus, i) / V_mag_[i] - V_mag_[i] * Y_bus(i, j).imag();
                 } else {
-                    J(ii + n_pq_, jj + n_pq_) =
+                    J(ii + n_non_slack, jj + n_non_slack) =
                             V_mag_[i] * (Y_bus(i, j).real() * std::sin(delta_[i] - delta_[j]) - Y_bus(i, j).imag() * std::cos(delta_[i] - delta_[j]));
                 }
             }
@@ -259,13 +291,18 @@ private:
     }
     void updateVoltages(const std::vector<double> &dx)
     {
-        if (dx.size() != 2 * n_pq_) {
+        if (dx.size() != 2 * n_pq_ + n_pv_) {
             throw std::invalid_argument("вектор dx не соответствует размеру вектора напряжений!");
         }
         for (size_t ii = 0; ii < n_pq_; ++ii) {
             size_t i = pq_node_indices_[ii];
             delta_[i] += dx[ii];
-            V_mag_[i] += dx[ii + n_pq_];
+            V_mag_[i] += dx[ii + n_pq_ + n_pv_];
+        }
+
+        for (size_t ii = 0; ii < n_pv_; ++ii) {
+			size_t i = pv_node_indices_[ii];
+			delta_[i] += dx[ii + n_pq_];
         }
     }
     std::vector<double> solveLinearSystem(Matrix<double> J, std::vector<double> F) const

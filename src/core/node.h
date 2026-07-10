@@ -10,7 +10,8 @@ public:
     static Node makePQ(NodeId id, double P_spec, double Q_spec,
                        double V_init, double delta_init = 0.0, double V_nom = 110e3);
     static Node makeSlack(NodeId id, double V_set_volts, double delta, double V_nom = 110e3);
-
+	static Node makePV(NodeId id, double P_spec, double V_set_volts, 
+                   double V_init_volts, double delta_init, double V_nom = 110e3);
     // Геттеры
     NodeId id() const
     {
@@ -92,4 +93,9 @@ inline Node Node::makePQ(NodeId id, double P_spec, double Q_spec, double V_init,
 inline Node Node::makeSlack(NodeId id, double V_set_volts, double delta, double V_nom)
 {
     return Node(id, NodeType::SLACK, 0.0, 0.0, V_set_volts, V_set_volts, delta, V_nom);
+}
+
+inline Node Node::makePV(NodeId id, double P_spec, double V_set_volts,
+                         double V_init_volts, double delta_init, double V_nom) {
+    return Node(id, NodeType::PV, P_spec, 0.0, V_set_volts, V_init_volts, delta_init, V_nom);
 }

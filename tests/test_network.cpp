@@ -860,3 +860,80 @@ TEST(Transformer, ComplexTransformerCascade) {
     
     printPowerFlowResults(sys, "Transformer.ComplexTransformerCascade");
 }
+
+
+//==========================PV nodes test==================================
+
+TEST(Solver, SimplePVNode) {
+    PowerSystem sys(100e6, 110e3);
+    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+    sys.addNode(Node::makePV(2, 50e6, 108e3, 108e3, 0.0, 110e3));  // PV: P=50 МВт, |V|=108 кВ
+    
+    sys.addLine(Line(1, 1, 2, 2.42, 12.1));
+    
+    Solver solver(sys);
+    auto result = solver.solve();
+    
+    EXPECT_TRUE(result.converged);
+    
+    const auto& nodes = sys.getNodes();
+    // Модуль напряжения PV-узла должен остаться 108 кВ
+    EXPECT_NEAR(nodes[1].V_mag(), 108e3, 1e3);
+    // Угол должен быть отрицательным (генерация)
+    EXPECT_GT(nodes[1].delta(), 0.0);
+    
+    printPowerFlowResults(sys, "SimplePVNode");
+}
+
+TEST(Solver, MixedPQandPV) {
+    PowerSystem sys(100e6, 110e3);
+    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+    sys.addNode(Node::makePV(2, 40e6, 108e3, 108e3, 0.0, 110e3));  // PV
+    sys.addNode(Node::makePQ(3, 30e6, 10e6, 110e3, 0.0, 110e3));   // PQ
+    
+    sys.addLine(Line(1, 1, 2, 5.0, 25.0));
+    sys.addLine(Line(2, 2, 3, 4.0, 20.0));
+    sys.addLine(Line(3, 1, 3, 6.0, 30.0));
+    
+    Solver solver(sys);
+    auto result = solver.solve();
+    
+    EXPECT_TRUE(result.converged);
+    
+    const auto& nodes = sys.getNodes();
+    // PV-узел: |V| = 108 кВ
+    EXPECT_NEAR(nodes[1].V_mag(), 108e3, 1e3);
+    // PQ-узел: |V| < 110 кВ
+    EXPECT_LT(nodes[2].V_mag(), 110e3);
+    
+    printPowerFlowResults(sys, "MixedPQandPV");
+}
+
+TEST(Solver, PVNodePowerBalance) {
+    PowerSystem sys(100e6, 110e3);
+    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+    sys.addNode(Node::makePV(2, 50e6, 108e3, 108e3, 0.0, 110e3));
+    sys.addNode(Node::makePQ(3, 30e6, 10e6, 110e3, 0.0, 110e3));
+    
+    sys.addLine(Line(1, 1, 2, 5.0, 25.0));
+    sys.addLine(Line(2, 2, 3, 4.0, 20.0));
+    
+    Solver solver(sys);
+    solver.solve();
+    
+    auto S_slack = sys.calculateSlackPower();
+    auto flows = sys.calculateLineFlows();
+    
+    // Суммарная генерация = Slack + PV
+    double P_gen_total = S_slack.real() + 50e6;
+    double P_load = 30e6;
+    
+    // Суммарные потери
+    std::complex<double> total_loss(0, 0);
+    for (const auto& flow : flows) {
+        total_loss += flow.S_loss;
+    }
+    
+    // Баланс: генерация = нагрузка + потери
+    EXPECT_NEAR(P_gen_total, P_load + total_loss.real(), 1e3);
+}
