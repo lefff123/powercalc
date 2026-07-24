@@ -7,7 +7,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Основной код
 set(CMAKE_AUTOMOC on)
-find_package(Qt6 REQUIRED COMPONENTS Core)
+find_package(Qt6 REQUIRED COMPONENTS Core Core5Compat)
 add_subdirectory(src)
 
 # Тесты — включены по умолчанию
