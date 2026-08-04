@@ -7,7 +7,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Основной код
 set(CMAKE_AUTOMOC on)
-find_package(Qt6 REQUIRED COMPONENTS Core Core5Compat)
+find_package(Qt6 REQUIRED COMPONENTS Core Core5Compat Widgets)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/RELEASE)
 add_subdirectory(src)
 
 # Тесты — включены по умолчанию

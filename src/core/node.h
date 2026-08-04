@@ -69,6 +69,10 @@ public:
 	// Сеттеры (для солвера)
 	void setType(NodeType type) { type_ = type; }
 	void setQ_spec(double Q_spec) { Q_spec_ = Q_spec; }
+	void setP_spec(double P) { P_spec_ = P; }
+	void setV_set(double V) { V_set_ = V; }
+	void setQ_min(double Q) { Q_min_ = Q; }
+	void setQ_max(double Q) { Q_max_ = Q; }
 	// для проверки на включенность
 	void disconnect() { enabled_ = false; }
 	void connect() { enabled_ = true; }
