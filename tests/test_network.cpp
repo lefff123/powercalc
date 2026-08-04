@@ -10,51 +10,51 @@
 
 // Функция для вывода результатов в формате, аналогичном pandapower
 void printPowerFlowResults(const PowerSystem& sys, const std::string& test_name) {
-    const auto& nodes = sys.getNodes();
-    
-    std::cout << "\n============================================================\n";
-    std::cout << " ТЕСТ: " << test_name << "\n";
-    std::cout << "============================================================\n";
-    
-    // [1] Напряжения в узлах
-    std::cout << "\n[1] Напряжения в узлах:\n";
-    for (size_t i = 0; i < nodes.size(); ++i) {
-        double v_kv = nodes[i].V_mag() / 1000.0;
-        double v_pu = nodes[i].V_mag() / sys.V_base();
-        double delta_deg = nodes[i].delta() * 180.0 / M_PI;
-        double delta_rad = nodes[i].delta();
-        
-        std::cout << std::fixed << std::setprecision(4);
-        std::cout << "  Узел " << nodes[i].id() << ": V = " << v_kv << " кВ (" 
-                  << std::setprecision(6) << v_pu << " p.u.) | Angle = " 
-                  << std::setprecision(4) << delta_deg << "° (" 
-                  << std::setprecision(6) << delta_rad << " рад)\n";
-    }
-    
-    // [2] Мощность в Slack-узле
-    std::cout << "\n[2] Мощность в Slack-узле (генерация):\n";
-    // Здесь можно добавить расчет мощности в Slack-узле, если нужно
-    
-    // [3] Потери мощности в линиях
-    std::cout << "\n[3] Потери мощности в линиях:\n";
-    // Здесь можно добавить расчет потерь, если нужно
-    
-    std::cout << "\n";
+	const auto& nodes = sys.getNodes();
+	
+	std::cout << "\n============================================================\n";
+	std::cout << " ТЕСТ: " << test_name << "\n";
+	std::cout << "============================================================\n";
+	
+	// [1] Напряжения в узлах
+	std::cout << "\n[1] Напряжения в узлах:\n";
+	for (size_t i = 0; i < nodes.size(); ++i) {
+		double v_kv = nodes[i].V_mag() / 1000.0;
+		double v_pu = nodes[i].V_mag() / sys.V_base();
+		double delta_deg = nodes[i].delta() * 180.0 / M_PI;
+		double delta_rad = nodes[i].delta();
+		
+		std::cout << std::fixed << std::setprecision(4);
+		std::cout << "  Узел " << nodes[i].id() << ": V = " << v_kv << " кВ (" 
+				  << std::setprecision(6) << v_pu << " p.u.) | Angle = " 
+				  << std::setprecision(4) << delta_deg << "° (" 
+				  << std::setprecision(6) << delta_rad << " рад)\n";
+	}
+	
+	// [2] Мощность в Slack-узле
+	std::cout << "\n[2] Мощность в Slack-узле (генерация):\n";
+	// Здесь можно добавить расчет мощности в Slack-узле, если нужно
+	
+	// [3] Потери мощности в линиях
+	std::cout << "\n[3] Потери мощности в линиях:\n";
+	// Здесь можно добавить расчет потерь, если нужно
+	
+	std::cout << "\n";
 }
 
 // Функция для проверки значений с допуском
 void checkNodeVoltage(const Node& node, double expected_v_kv, double expected_delta_deg, 
-                      double v_tol = 0.1, double delta_tol = 0.01) {
-    double v_kv = node.V_mag() / 1000.0;
-    double delta_deg = node.delta() * 180.0 / M_PI;
-    
-    EXPECT_NEAR(v_kv, expected_v_kv, v_tol) 
-        << "Node " << node.id() << ": V_kv expected " << expected_v_kv 
-        << " but got " << v_kv;
-    
-    EXPECT_NEAR(delta_deg, expected_delta_deg, delta_tol)
-        << "Node " << node.id() << ": delta_deg expected " << expected_delta_deg 
-        << " but got " << delta_deg;
+					  double v_tol = 0.1, double delta_tol = 0.01) {
+	double v_kv = node.V_mag() / 1000.0;
+	double delta_deg = node.delta() * 180.0 / M_PI;
+	
+	EXPECT_NEAR(v_kv, expected_v_kv, v_tol) 
+		<< "Node " << node.id() << ": V_kv expected " << expected_v_kv 
+		<< " but got " << v_kv;
+	
+	EXPECT_NEAR(delta_deg, expected_delta_deg, delta_tol)
+		<< "Node " << node.id() << ": delta_deg expected " << expected_delta_deg 
+		<< " but got " << delta_deg;
 }
 
 // ==================== Node ====================
@@ -131,7 +131,7 @@ TEST(PowerSystem, DuplicateNodeThrows) {
   PowerSystem sys(100e6, 110e3);
   sys.addNode(Node::makeSlack(1, 110e3, 0.0));
   EXPECT_THROW(sys.addNode(Node::makePQ(1, 50e6, 20e6, 110e3, 0.0)),
-               std::invalid_argument);
+			   std::invalid_argument);
 }
 
 TEST(PowerSystem, LineToNonExistentNodeThrows) {
@@ -249,8 +249,8 @@ TEST(Solver, ThreeBusSystem) {
   EXPECT_LT(result.iterations, 15);
 
   for (const auto &node : sys.getNodes()) {
-    EXPECT_GT(node.V_mag(), 80e3);
-    EXPECT_LT(node.V_mag(), 120e3);
+	EXPECT_GT(node.V_mag(), 80e3);
+	EXPECT_LT(node.V_mag(), 120e3);
   }
 }
 
@@ -291,22 +291,22 @@ TEST(Solver, DifferentLoadLevels) {
   std::vector<double> loads = {10e6, 30e6, 50e6, 70e6};
 
   for (double load : loads) {
-    PowerSystem sys(100e6, 110e3);
-    sys.addNode(Node::makeSlack(1, 110e3, 0.0));
-    sys.addNode(Node::makePQ(2, load, load * 0.4, 110e3, 0.0));
-    // Уменьшили сопротивление линии, чтобы сеть была "прочной"
-    sys.addLine(Line(1, 1, 2, 2.42, 12.1));
+	PowerSystem sys(100e6, 110e3);
+	sys.addNode(Node::makeSlack(1, 110e3, 0.0));
+	sys.addNode(Node::makePQ(2, load, load * 0.4, 110e3, 0.0));
+	// Уменьшили сопротивление линии, чтобы сеть была "прочной"
+	sys.addLine(Line(1, 1, 2, 2.42, 12.1));
 
-    Solver solver(sys);
-    auto result = solver.solve();
+	Solver solver(sys);
+	auto result = solver.solve();
 
-    EXPECT_TRUE(result.converged)
-        << "Не сошёлся для нагрузки " << load / 1e6 << " МВт";
+	EXPECT_TRUE(result.converged)
+		<< "Не сошёлся для нагрузки " << load / 1e6 << " МВт";
 
-    const auto &nodes = sys.getNodes();
-    EXPECT_GT(nodes[1].V_mag(), 90e3)
-        << "Слишком низкое напряжение для " << load / 1e6 << " МВт";
-    EXPECT_LT(nodes[1].V_mag(), 110e3);
+	const auto &nodes = sys.getNodes();
+	EXPECT_GT(nodes[1].V_mag(), 90e3)
+		<< "Слишком низкое напряжение для " << load / 1e6 << " МВт";
+	EXPECT_LT(nodes[1].V_mag(), 110e3);
   }
 }
 
@@ -366,446 +366,446 @@ TEST(Solver, MultiplePQNodes) {
 // ==================== Line Flows ====================
 
 TEST(LineFlows, SimpleTwoBusFlows) {
-    // Простая сеть: Slack -> PQ через одну линию
-    PowerSystem sys(100e6, 110e3);
-    sys.addNode(Node::makeSlack(1, 110e3, 0.0));
-    sys.addNode(Node::makePQ(2, 50e6, 20e6, 110e3, 0.0));
-    sys.addLine(Line(1, 1, 2, 2.42, 12.1));
+	// Простая сеть: Slack -> PQ через одну линию
+	PowerSystem sys(100e6, 110e3);
+	sys.addNode(Node::makeSlack(1, 110e3, 0.0));
+	sys.addNode(Node::makePQ(2, 50e6, 20e6, 110e3, 0.0));
+	sys.addLine(Line(1, 1, 2, 2.42, 12.1));
 
-    Solver solver(sys);
-    solver.solve();
+	Solver solver(sys);
+	solver.solve();
 
-    auto flows = sys.calculateLineFlows();
-    
-    // Должна быть одна линия
-    ASSERT_EQ(flows.size(), 1);
-    
-    const auto& flow = flows[0];
-    
-    // Проверка ID и узлов
-    EXPECT_EQ(flow.line_id, 1);
-    EXPECT_EQ(flow.from_node, 1);
-    EXPECT_EQ(flow.to_node, 2);
-    
-    // Мощность в начале линии должна быть больше нагрузки (из-за потерь)
-    EXPECT_GT(flow.S_from.real(), 50e6);  // P_from > 50 МВт
-    EXPECT_GT(flow.S_from.imag(), 20e6);  // Q_from > 20 Мвар
-    
-    // Мощность в конце линии ≈ нагрузке (с обратным знаком)
-    // S_to отрицательная (мощность уходит из линии в узел)
-    EXPECT_NEAR(flow.S_to.real(), -50e6, 1e6);  // P_to ≈ -50 МВт
-    EXPECT_NEAR(flow.S_to.imag(), -20e6, 1e6);  // Q_to ≈ -20 Мвар
-    
-    // Потери положительны
-    EXPECT_GT(flow.S_loss.real(), 0);  // P_loss > 0
-    EXPECT_GT(flow.S_loss.imag(), 0);  // Q_loss > 0
-    
-    // Потери = S_from + S_to
-    EXPECT_NEAR(flow.S_loss.real(), flow.S_from.real() + flow.S_to.real(), 1e3);
-    EXPECT_NEAR(flow.S_loss.imag(), flow.S_from.imag() + flow.S_to.imag(), 1e3);
-    
-    printPowerFlowResults(sys, "LineFlows.SimpleTwoBusFlows");
+	auto flows = sys.calculateLineFlows();
+	
+	// Должна быть одна линия
+	ASSERT_EQ(flows.size(), 1);
+	
+	const auto& flow = flows[0];
+	
+	// Проверка ID и узлов
+	EXPECT_EQ(flow.line_id, 1);
+	EXPECT_EQ(flow.from_node, 1);
+	EXPECT_EQ(flow.to_node, 2);
+	
+	// Мощность в начале линии должна быть больше нагрузки (из-за потерь)
+	EXPECT_GT(flow.S_from.real(), 50e6);  // P_from > 50 МВт
+	EXPECT_GT(flow.S_from.imag(), 20e6);  // Q_from > 20 Мвар
+	
+	// Мощность в конце линии ≈ нагрузке (с обратным знаком)
+	// S_to отрицательная (мощность уходит из линии в узел)
+	EXPECT_NEAR(flow.S_to.real(), -50e6, 1e6);  // P_to ≈ -50 МВт
+	EXPECT_NEAR(flow.S_to.imag(), -20e6, 1e6);  // Q_to ≈ -20 Мвар
+	
+	// Потери положительны
+	EXPECT_GT(flow.S_loss.real(), 0);  // P_loss > 0
+	EXPECT_GT(flow.S_loss.imag(), 0);  // Q_loss > 0
+	
+	// Потери = S_from + S_to
+	EXPECT_NEAR(flow.S_loss.real(), flow.S_from.real() + flow.S_to.real(), 1e3);
+	EXPECT_NEAR(flow.S_loss.imag(), flow.S_from.imag() + flow.S_to.imag(), 1e3);
+	
+	printPowerFlowResults(sys, "LineFlows.SimpleTwoBusFlows");
 }
 
 TEST(LineFlows, ThreeBusFlows) {
-    // Сеть из 3 узлов с 3 линиями
-    PowerSystem sys(100e6, 110e3);
-    sys.addNode(Node::makeSlack(1, 110e3, 0.0));
-    sys.addNode(Node::makePQ(2, 30e6, 10e6, 110e3, 0.0));
-    sys.addNode(Node::makePQ(3, 40e6, 15e6, 110e3, 0.0));
+	// Сеть из 3 узлов с 3 линиями
+	PowerSystem sys(100e6, 110e3);
+	sys.addNode(Node::makeSlack(1, 110e3, 0.0));
+	sys.addNode(Node::makePQ(2, 30e6, 10e6, 110e3, 0.0));
+	sys.addNode(Node::makePQ(3, 40e6, 15e6, 110e3, 0.0));
 
-    sys.addLine(Line(1, 1, 2, 10.0, 50.0));
-    sys.addLine(Line(2, 2, 3, 8.0, 40.0));
-    sys.addLine(Line(3, 1, 3, 12.0, 60.0));
+	sys.addLine(Line(1, 1, 2, 10.0, 50.0));
+	sys.addLine(Line(2, 2, 3, 8.0, 40.0));
+	sys.addLine(Line(3, 1, 3, 12.0, 60.0));
 
-    Solver solver(sys);
-    solver.solve();
+	Solver solver(sys);
+	solver.solve();
 
-    auto flows = sys.calculateLineFlows();
-    
-    // Должно быть 3 линии
-    ASSERT_EQ(flows.size(), 3);
-    
-    // Суммарные потери
-    std::complex<double> total_loss(0, 0);
-    for (const auto& flow : flows) {
-        total_loss += flow.S_loss;
-        // Потери в каждой линии положительны
-        EXPECT_GT(flow.S_loss.real(), 0);
-    }
-    
-    // Суммарные потери должны быть разумными (не слишком большими)
-    EXPECT_LT(total_loss.real(), 10e6);  // < 10 МВт
-    
-    printPowerFlowResults(sys, "LineFlows.ThreeBusFlows");
+	auto flows = sys.calculateLineFlows();
+	
+	// Должно быть 3 линии
+	ASSERT_EQ(flows.size(), 3);
+	
+	// Суммарные потери
+	std::complex<double> total_loss(0, 0);
+	for (const auto& flow : flows) {
+		total_loss += flow.S_loss;
+		// Потери в каждой линии положительны
+		EXPECT_GT(flow.S_loss.real(), 0);
+	}
+	
+	// Суммарные потери должны быть разумными (не слишком большими)
+	EXPECT_LT(total_loss.real(), 10e6);  // < 10 МВт
+	
+	printPowerFlowResults(sys, "LineFlows.ThreeBusFlows");
 }
 
 // ==================== Slack Power ====================
 
 TEST(SlackPower, SimpleTwoBusBalance) {
-    // Проверка баланса: P_slack = P_load + P_loss
-    PowerSystem sys(100e6, 110e3);
-    sys.addNode(Node::makeSlack(1, 110e3, 0.0));
-    sys.addNode(Node::makePQ(2, 50e6, 20e6, 110e3, 0.0));
-    sys.addLine(Line(1, 1, 2, 2.42, 12.1));
+	// Проверка баланса: P_slack = P_load + P_loss
+	PowerSystem sys(100e6, 110e3);
+	sys.addNode(Node::makeSlack(1, 110e3, 0.0));
+	sys.addNode(Node::makePQ(2, 50e6, 20e6, 110e3, 0.0));
+	sys.addLine(Line(1, 1, 2, 2.42, 12.1));
 
-    Solver solver(sys);
-    solver.solve();
+	Solver solver(sys);
+	solver.solve();
 
-    auto S_slack = sys.calculateSlackPower();
-    auto flows = sys.calculateLineFlows();
-    
-    double P_load = 50e6;
-    double Q_load = 20e6;
-    double P_loss = flows[0].S_loss.real();
-    double Q_loss = flows[0].S_loss.imag();
-    
-    // P_slack = P_load + P_loss
-    EXPECT_NEAR(S_slack.real(), P_load + P_loss, 1e3);
-    
-    // Q_slack = Q_load + Q_loss
-    EXPECT_NEAR(S_slack.imag(), Q_load + Q_loss, 1e3);
-    
-    printPowerFlowResults(sys, "SlackPower.SimpleTwoBusBalance");
+	auto S_slack = sys.calculateSlackPower();
+	auto flows = sys.calculateLineFlows();
+	
+	double P_load = 50e6;
+	double Q_load = 20e6;
+	double P_loss = flows[0].S_loss.real();
+	double Q_loss = flows[0].S_loss.imag();
+	
+	// P_slack = P_load + P_loss
+	EXPECT_NEAR(S_slack.real(), P_load + P_loss, 1e3);
+	
+	// Q_slack = Q_load + Q_loss
+	EXPECT_NEAR(S_slack.imag(), Q_load + Q_loss, 1e3);
+	
+	printPowerFlowResults(sys, "SlackPower.SimpleTwoBusBalance");
 }
 
 TEST(SlackPower, ThreeBusBalance) {
-    // Проверка баланса для 3 узлов
-    PowerSystem sys(100e6, 110e3);
-    sys.addNode(Node::makeSlack(1, 110e3, 0.0));
-    sys.addNode(Node::makePQ(2, 30e6, 10e6, 110e3, 0.0));
-    sys.addNode(Node::makePQ(3, 40e6, 15e6, 110e3, 0.0));
+	// Проверка баланса для 3 узлов
+	PowerSystem sys(100e6, 110e3);
+	sys.addNode(Node::makeSlack(1, 110e3, 0.0));
+	sys.addNode(Node::makePQ(2, 30e6, 10e6, 110e3, 0.0));
+	sys.addNode(Node::makePQ(3, 40e6, 15e6, 110e3, 0.0));
 
-    sys.addLine(Line(1, 1, 2, 10.0, 50.0));
-    sys.addLine(Line(2, 2, 3, 8.0, 40.0));
-    sys.addLine(Line(3, 1, 3, 12.0, 60.0));
+	sys.addLine(Line(1, 1, 2, 10.0, 50.0));
+	sys.addLine(Line(2, 2, 3, 8.0, 40.0));
+	sys.addLine(Line(3, 1, 3, 12.0, 60.0));
 
-    Solver solver(sys);
-    solver.solve();
+	Solver solver(sys);
+	solver.solve();
 
-    auto S_slack = sys.calculateSlackPower();
-    auto flows = sys.calculateLineFlows();
-    
-    double P_load = 30e6 + 40e6;  // Сумма нагрузок
-    double Q_load = 10e6 + 15e6;
-    
-    // Суммарные потери
-    std::complex<double> total_loss(0, 0);
-    for (const auto& flow : flows) {
-        total_loss += flow.S_loss;
-    }
-    
-    // P_slack = P_load + P_loss
-    EXPECT_NEAR(S_slack.real(), P_load + total_loss.real(), 1e3);
-    
-    // Q_slack = Q_load + Q_loss
-    EXPECT_NEAR(S_slack.imag(), Q_load + total_loss.imag(), 1e3);
-    
-    printPowerFlowResults(sys, "SlackPower.ThreeBusBalance");
+	auto S_slack = sys.calculateSlackPower();
+	auto flows = sys.calculateLineFlows();
+	
+	double P_load = 30e6 + 40e6;  // Сумма нагрузок
+	double Q_load = 10e6 + 15e6;
+	
+	// Суммарные потери
+	std::complex<double> total_loss(0, 0);
+	for (const auto& flow : flows) {
+		total_loss += flow.S_loss;
+	}
+	
+	// P_slack = P_load + P_loss
+	EXPECT_NEAR(S_slack.real(), P_load + total_loss.real(), 1e3);
+	
+	// Q_slack = Q_load + Q_loss
+	EXPECT_NEAR(S_slack.imag(), Q_load + total_loss.imag(), 1e3);
+	
+	printPowerFlowResults(sys, "SlackPower.ThreeBusBalance");
 }
 
 // ==================== Power Balance ====================
 
 TEST(PowerBalance, GlobalBalance) {
-    // Глобальная проверка: генерация = нагрузка + потери
-    PowerSystem sys(100e6, 110e3);
-    sys.addNode(Node::makeSlack(1, 110e3, 0.0));
-    sys.addNode(Node::makePQ(2, 40e6, 15e6, 110e3, 0.0));
-    sys.addNode(Node::makePQ(3, 30e6, 10e6, 110e3, 0.0));
+	// Глобальная проверка: генерация = нагрузка + потери
+	PowerSystem sys(100e6, 110e3);
+	sys.addNode(Node::makeSlack(1, 110e3, 0.0));
+	sys.addNode(Node::makePQ(2, 40e6, 15e6, 110e3, 0.0));
+	sys.addNode(Node::makePQ(3, 30e6, 10e6, 110e3, 0.0));
 
-    sys.addLine(Line(1, 1, 2, 10.0, 50.0));
-    sys.addLine(Line(2, 2, 3, 8.0, 40.0));
-    sys.addLine(Line(3, 3, 1, 12.0, 60.0));
+	sys.addLine(Line(1, 1, 2, 10.0, 50.0));
+	sys.addLine(Line(2, 2, 3, 8.0, 40.0));
+	sys.addLine(Line(3, 3, 1, 12.0, 60.0));
 
-    Solver solver(sys);
-    solver.solve();
+	Solver solver(sys);
+	solver.solve();
 
-    auto S_slack = sys.calculateSlackPower();
-    auto flows = sys.calculateLineFlows();
-    
-    // Суммарная генерация (только Slack)
-    double P_gen = S_slack.real();
-    double Q_gen = S_slack.imag();
-    
-    // Суммарная нагрузка
-    double P_load = 0, Q_load = 0;
-    for (const auto& node : sys.getNodes()) {
-        if (node.type() == NodeType::PQ) {
-            P_load += node.P_spec();
-            Q_load += node.Q_spec();
-        }
-    }
-    
-    // Суммарные потери
-    std::complex<double> total_loss(0, 0);
-    for (const auto& flow : flows) {
-        total_loss += flow.S_loss;
-    }
-    
-    // Баланс P: генерация = нагрузка + потери
-    EXPECT_NEAR(P_gen, P_load + total_loss.real(), 1e3);
-    
-    // Баланс Q: генерация = нагрузка + потери
-    EXPECT_NEAR(Q_gen, Q_load + total_loss.imag(), 1e3);
-    
-    printPowerFlowResults(sys, "PowerBalance.GlobalBalance");
+	auto S_slack = sys.calculateSlackPower();
+	auto flows = sys.calculateLineFlows();
+	
+	// Суммарная генерация (только Slack)
+	double P_gen = S_slack.real();
+	double Q_gen = S_slack.imag();
+	
+	// Суммарная нагрузка
+	double P_load = 0, Q_load = 0;
+	for (const auto& node : sys.getNodes()) {
+		if (node.type() == NodeType::PQ) {
+			P_load += node.P_spec();
+			Q_load += node.Q_spec();
+		}
+	}
+	
+	// Суммарные потери
+	std::complex<double> total_loss(0, 0);
+	for (const auto& flow : flows) {
+		total_loss += flow.S_loss;
+	}
+	
+	// Баланс P: генерация = нагрузка + потери
+	EXPECT_NEAR(P_gen, P_load + total_loss.real(), 1e3);
+	
+	// Баланс Q: генерация = нагрузка + потери
+	EXPECT_NEAR(Q_gen, Q_load + total_loss.imag(), 1e3);
+	
+	printPowerFlowResults(sys, "PowerBalance.GlobalBalance");
 }
 
 TEST(Transformer, StepDown110to10) {
-    PowerSystem sys(100e6, 110e3);
-    sys.addNode(Node::makeSlack(1, 110e3, 0.0));
-    sys.addNode(Node::makePQ(2, 10e6, 5e6, 110e3, 0.0));
-    
-    // Трансформатор 110/10 кВ, k_t = 11, R=0.5 Ом, X=10 Ом (приведены к ВН)
-    // В о.е.: R = 0.5/121 = 0.00413, X = 10/121 = 0.08264
-    sys.addLine(Line(1, 1, 2, 0.5, 10.0, 11.0));  // k_t = 11.0
-    
-    Solver solver(sys);
-    auto result = solver.solve();
-    
-    EXPECT_TRUE(result.converged);
-    
-    printPowerFlowResults(sys, "Transformer.StepDown110to10");
-    
-    // Проверка: напряжение на вторичной стороне должно быть ≈ 10 кВ
-    // В о.е. относительно 110 кВ: V_2 ≈ 10/110 = 0.0909 p.u.
-    // Но это неверно! В нашей модели все напряжения в одном базисе.
-    // Правильная проверка: сверить с pandapower
+	PowerSystem sys(100e6, 110e3);
+	sys.addNode(Node::makeSlack(1, 110e3, 0.0));
+	sys.addNode(Node::makePQ(2, 10e6, 5e6, 110e3, 0.0));
+	
+	// Трансформатор 110/10 кВ, k_t = 11, R=0.5 Ом, X=10 Ом (приведены к ВН)
+	// В о.е.: R = 0.5/121 = 0.00413, X = 10/121 = 0.08264
+	sys.addLine(Line(1, 1, 2, 0.5, 10.0, 11.0));  // k_t = 11.0
+	
+	Solver solver(sys);
+	auto result = solver.solve();
+	
+	EXPECT_TRUE(result.converged);
+	
+	printPowerFlowResults(sys, "Transformer.StepDown110to10");
+	
+	// Проверка: напряжение на вторичной стороне должно быть ≈ 10 кВ
+	// В о.е. относительно 110 кВ: V_2 ≈ 10/110 = 0.0909 p.u.
+	// Но это неверно! В нашей модели все напряжения в одном базисе.
+	// Правильная проверка: сверить с pandapower
 }
 
 TEST(Transformer, RegularLineUnchanged) {
-    PowerSystem sys(100e6, 110e3);
-    sys.addNode(Node::makeSlack(1, 110e3, 0.0));
-    sys.addNode(Node::makePQ(2, 50e6, 20e6, 110e3, 0.0));
-    
-    // Обычная линия (k_t = 1.0 по умолчанию)
-    sys.addLine(Line(1, 1, 2, 2.42, 12.1));
-    
-    Solver solver(sys);
-    auto result = solver.solve();
-    
-    EXPECT_TRUE(result.converged);
+	PowerSystem sys(100e6, 110e3);
+	sys.addNode(Node::makeSlack(1, 110e3, 0.0));
+	sys.addNode(Node::makePQ(2, 50e6, 20e6, 110e3, 0.0));
+	
+	// Обычная линия (k_t = 1.0 по умолчанию)
+	sys.addLine(Line(1, 1, 2, 2.42, 12.1));
+	
+	Solver solver(sys);
+	auto result = solver.solve();
+	
+	EXPECT_TRUE(result.converged);
 
-    const auto &nodes = sys.getNodes();
-    checkNodeVoltage(sys.getNode(2), 106.4662, -2.7241);
+	const auto &nodes = sys.getNodes();
+	checkNodeVoltage(sys.getNode(2), 106.4662, -2.7241);
 }
 
 TEST(Transformer, PowerBalanceWithTransformer) {
-    PowerSystem sys(100e6, 110e3);
-    sys.addNode(Node::makeSlack(1, 110e3, 0.0));
-    sys.addNode(Node::makePQ(2, 20e6, 10e6, 110e3, 0.0));
-    
-    sys.addLine(Line(1, 1, 2, 1.0, 5.0, 1.05));  // k_t = 1.05
-    
-    Solver solver(sys);
-    solver.solve();
-    
-    auto S_slack = sys.calculateSlackPower();
-    auto flows = sys.calculateLineFlows();
-    
-    // Баланс: P_slack = P_load + P_loss
-    EXPECT_NEAR(S_slack.real(), 20e6 + flows[0].S_loss.real(), 1e3);
-    EXPECT_NEAR(S_slack.imag(), 10e6 + flows[0].S_loss.imag(), 1e3);
+	PowerSystem sys(100e6, 110e3);
+	sys.addNode(Node::makeSlack(1, 110e3, 0.0));
+	sys.addNode(Node::makePQ(2, 20e6, 10e6, 110e3, 0.0));
+	
+	sys.addLine(Line(1, 1, 2, 1.0, 5.0, 1.05));  // k_t = 1.05
+	
+	Solver solver(sys);
+	solver.solve();
+	
+	auto S_slack = sys.calculateSlackPower();
+	auto flows = sys.calculateLineFlows();
+	
+	// Баланс: P_slack = P_load + P_loss
+	EXPECT_NEAR(S_slack.real(), 20e6 + flows[0].S_loss.real(), 1e3);
+	EXPECT_NEAR(S_slack.imag(), 10e6 + flows[0].S_loss.imag(), 1e3);
 }
 
 TEST(PowerSystem, BaseVoltagesWithoutTransformer) {
-    PowerSystem sys(100e6, 110e3);
-    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
-    sys.addNode(Node::makePQ(2, 50e6, 20e6, 110e3, 0.0, 110e3));
-    
-    // Обычная линия (k_t = 1.0)
-    sys.addLine(Line(1, 1, 2, 2.42, 12.1));
-    
-    // Оба узла должны иметь V_base = 110 кВ
-    EXPECT_DOUBLE_EQ(sys.V_base(1), 110e3);
-    EXPECT_DOUBLE_EQ(sys.V_base(2), 110e3);
+	PowerSystem sys(100e6, 110e3);
+	sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+	sys.addNode(Node::makePQ(2, 50e6, 20e6, 110e3, 0.0, 110e3));
+	
+	// Обычная линия (k_t = 1.0)
+	sys.addLine(Line(1, 1, 2, 2.42, 12.1));
+	
+	// Оба узла должны иметь V_base = 110 кВ
+	EXPECT_DOUBLE_EQ(sys.V_base(1), 110e3);
+	EXPECT_DOUBLE_EQ(sys.V_base(2), 110e3);
 }
 
 TEST(PowerSystem, BaseVoltagesWithTransformer) {
-    PowerSystem sys(100e6, 110e3);
-    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));  // ВН
-    sys.addNode(Node::makePQ(2, 20e6, 10e6, 10e3, 0.0, 10e3));  // НН
-    
-    // Трансформатор 110/10 кВ, k_t = 11
-    sys.addLine(Line(1, 1, 2, 0.5, 10.0, std::complex<double>(11.0, 0.0)));
-    
-    // Узел 1 (Slack): V_base = 110 кВ
-    EXPECT_DOUBLE_EQ(sys.V_base(1), 110e3);
-    
-    // Узел 2: V_base = 110 / 11 = 10 кВ
-    EXPECT_DOUBLE_EQ(sys.V_base(2), 10e3);
+	PowerSystem sys(100e6, 110e3);
+	sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));  // ВН
+	sys.addNode(Node::makePQ(2, 20e6, 10e6, 10e3, 0.0, 10e3));  // НН
+	
+	// Трансформатор 110/10 кВ, k_t = 11
+	sys.addLine(Line(1, 1, 2, 0.5, 10.0, std::complex<double>(11.0, 0.0)));
+	
+	// Узел 1 (Slack): V_base = 110 кВ
+	EXPECT_DOUBLE_EQ(sys.V_base(1), 110e3);
+	
+	// Узел 2: V_base = 110 / 11 = 10 кВ
+	EXPECT_DOUBLE_EQ(sys.V_base(2), 10e3);
 }
 
 TEST(PowerSystem, BaseVoltagesDisconnectedNetwork) {
-    PowerSystem sys(100e6, 110e3);
-    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
-    sys.addNode(Node::makePQ(2, 50e6, 20e6, 110e3, 0.0, 110e3));
-    sys.addNode(Node::makePQ(3, 30e6, 10e6, 110e3, 0.0, 110e3));
-    
-    // Только одна линия между узлами 1 и 2, узел 3 изолирован
-    sys.addLine(Line(1, 1, 2, 2.42, 12.1));
-    
-    // Должно бросить исключение о несвязной сети
-    EXPECT_THROW(sys.buildYBus(), std::runtime_error);
+	PowerSystem sys(100e6, 110e3);
+	sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+	sys.addNode(Node::makePQ(2, 50e6, 20e6, 110e3, 0.0, 110e3));
+	sys.addNode(Node::makePQ(3, 30e6, 10e6, 110e3, 0.0, 110e3));
+	
+	// Только одна линия между узлами 1 и 2, узел 3 изолирован
+	sys.addLine(Line(1, 1, 2, 2.42, 12.1));
+	
+	// Должно бросить исключение о несвязной сети
+	EXPECT_THROW(sys.buildYBus(), std::runtime_error);
 }
 
 TEST(Solver, TransformerSimple) {
-    PowerSystem sys(100e6, 110e3);
-    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
-    sys.addNode(Node::makePQ(2, 20e6, 10e6, 10e3, 0.0, 10e3));
-    
-    // Трансформатор 110/10 кВ, k_t = 11
-    sys.addLine(Line(1, 1, 2, 0.5, 10.0, std::complex<double>(11.0, 0.0)));
-    
-    Solver solver(sys);
-    auto result = solver.solve();
-    
-    EXPECT_TRUE(result.converged);
-    
-    printPowerFlowResults(sys, "TransformerSimple");
+	PowerSystem sys(100e6, 110e3);
+	sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+	sys.addNode(Node::makePQ(2, 20e6, 10e6, 10e3, 0.0, 10e3));
+	
+	// Трансформатор 110/10 кВ, k_t = 11
+	sys.addLine(Line(1, 1, 2, 0.5, 10.0, std::complex<double>(11.0, 0.0)));
+	
+	Solver solver(sys);
+	auto result = solver.solve();
+	
+	EXPECT_TRUE(result.converged);
+	
+	printPowerFlowResults(sys, "TransformerSimple");
 
-    const auto &nodes = sys.getNodes();
-    EXPECT_NEAR(sys.getNode(1).V_mag(), 110e3, 1e3);
-    EXPECT_GT(sys.getNode(2).V_mag(), 9e3);
-    EXPECT_LT(sys.getNode(2).V_mag(), 11e3);
+	const auto &nodes = sys.getNodes();
+	EXPECT_NEAR(sys.getNode(1).V_mag(), 110e3, 1e3);
+	EXPECT_GT(sys.getNode(2).V_mag(), 9e3);
+	EXPECT_LT(sys.getNode(2).V_mag(), 11e3);
 }
 
 TEST(Solver, TransformerCascade) {
-    PowerSystem sys(100e6, 220e3);
-    sys.addNode(Node::makeSlack(1, 220e3, 0.0, 220e3));
-    sys.addNode(Node::makePQ(2, 30e6, 10e6, 110e3, 0.0, 110e3));
-    sys.addNode(Node::makePQ(3, 20e6, 8e6, 10e3, 0.0, 10e3));
-    
-    sys.addLine(Line(1, 1, 2, 1.0, 5.0, std::complex<double>(2.0, 0.0)));
-    sys.addLine(Line(2, 2, 3, 0.5, 3.0, std::complex<double>(11.0, 0.0)));
-    
-    Solver solver(sys);
-    auto result = solver.solve();
-    
-    EXPECT_TRUE(result.converged);
-    
-    printPowerFlowResults(sys, "TransformerCascade");
+	PowerSystem sys(100e6, 220e3);
+	sys.addNode(Node::makeSlack(1, 220e3, 0.0, 220e3));
+	sys.addNode(Node::makePQ(2, 30e6, 10e6, 110e3, 0.0, 110e3));
+	sys.addNode(Node::makePQ(3, 20e6, 8e6, 10e3, 0.0, 10e3));
+	
+	sys.addLine(Line(1, 1, 2, 1.0, 5.0, std::complex<double>(2.0, 0.0)));
+	sys.addLine(Line(2, 2, 3, 0.5, 3.0, std::complex<double>(11.0, 0.0)));
+	
+	Solver solver(sys);
+	auto result = solver.solve();
+	
+	EXPECT_TRUE(result.converged);
+	
+	printPowerFlowResults(sys, "TransformerCascade");
 
-    const auto &nodes = sys.getNodes();
-    EXPECT_GT(sys.getNode(2).V_mag(), 100e3);
-    EXPECT_LT(sys.getNode(2).V_mag(), 120e3);
-    EXPECT_GT(sys.getNode(3).V_mag(), 9e3);
-    EXPECT_LT(sys.getNode(3).V_mag(), 11e3);
+	const auto &nodes = sys.getNodes();
+	EXPECT_GT(sys.getNode(2).V_mag(), 100e3);
+	EXPECT_LT(sys.getNode(2).V_mag(), 120e3);
+	EXPECT_GT(sys.getNode(3).V_mag(), 9e3);
+	EXPECT_LT(sys.getNode(3).V_mag(), 11e3);
 }
 
 TEST(Solver, TransformerPowerBalance) {
-    PowerSystem sys(100e6, 110e3);
-    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
-    sys.addNode(Node::makePQ(2, 20e6, 10e6, 10e3, 0.0, 10e3));
-    
-    sys.addLine(Line(1, 1, 2, 0.5, 10.0, std::complex<double>(11.0, 0.0)));
-    
-    Solver solver(sys);
-    solver.solve();
-    
-    auto S_slack = sys.calculateSlackPower();
-    auto flows = sys.calculateLineFlows();
-    
-    // P_slack = P_load + P_loss
-    EXPECT_NEAR(S_slack.real(), 20e6 + flows[0].S_loss.real(), 1e3);
-    
-    // Q_slack = Q_load + Q_loss
-    EXPECT_NEAR(S_slack.imag(), 10e6 + flows[0].S_loss.imag(), 1e3);
+	PowerSystem sys(100e6, 110e3);
+	sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+	sys.addNode(Node::makePQ(2, 20e6, 10e6, 10e3, 0.0, 10e3));
+	
+	sys.addLine(Line(1, 1, 2, 0.5, 10.0, std::complex<double>(11.0, 0.0)));
+	
+	Solver solver(sys);
+	solver.solve();
+	
+	auto S_slack = sys.calculateSlackPower();
+	auto flows = sys.calculateLineFlows();
+	
+	// P_slack = P_load + P_loss
+	EXPECT_NEAR(S_slack.real(), 20e6 + flows[0].S_loss.real(), 1e3);
+	
+	// Q_slack = Q_load + Q_loss
+	EXPECT_NEAR(S_slack.imag(), 10e6 + flows[0].S_loss.imag(), 1e3);
 }
 
 // ==================== Complex Transformer Tests ====================
 
 TEST(Transformer, PhaseShiftingTransformer) {
-    // Фазосдвигающий трансформатор: только сдвиг фазы, без изменения модуля
-    // k_t = 1.0 * e^(j*5°) = cos(5°) + j*sin(5°)
-    PowerSystem sys(100e6, 110e3);
-    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
-    sys.addNode(Node::makePQ(2, 50e6, 20e6, 110e3, 0.0, 110e3));
-    
-    // Комплексный k_t: модуль 1.0, угол 5°
-    double angle_rad = 5.0 * M_PI / 180.0;  // 5° в радианах
-    std::complex<double> k_t(std::cos(angle_rad), std::sin(angle_rad));
-    
-    sys.addLine(Line(1, 1, 2, 2.42, 12.1, k_t));
-    
-    Solver solver(sys);
-    auto result = solver.solve();
-    
-    EXPECT_TRUE(result.converged);
-    
-    const auto& nodes = sys.getNodes();
-    
-    // Узел 1: V = 110 кВ, угол ≈ 0°
-    EXPECT_NEAR(nodes[0].V_mag(), 110e3, 1e3);
-    
-    // Узел 2: V ≈ 110 кВ (модуль почти не изменился)
-    EXPECT_GT(nodes[1].V_mag(), 100e3);
-    EXPECT_LT(nodes[1].V_mag(), 115e3);
-    
-    // Угол узла 2 должен быть отрицательным (отстаёт из-за нагрузки)
-    EXPECT_LT(nodes[1].delta(), 0.0);
-    
-    printPowerFlowResults(sys, "Transformer.PhaseShiftingTransformer");
+	// Фазосдвигающий трансформатор: только сдвиг фазы, без изменения модуля
+	// k_t = 1.0 * e^(j*5°) = cos(5°) + j*sin(5°)
+	PowerSystem sys(100e6, 110e3);
+	sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+	sys.addNode(Node::makePQ(2, 50e6, 20e6, 110e3, 0.0, 110e3));
+	
+	// Комплексный k_t: модуль 1.0, угол 5°
+	double angle_rad = 5.0 * M_PI / 180.0;  // 5° в радианах
+	std::complex<double> k_t(std::cos(angle_rad), std::sin(angle_rad));
+	
+	sys.addLine(Line(1, 1, 2, 2.42, 12.1, k_t));
+	
+	Solver solver(sys);
+	auto result = solver.solve();
+	
+	EXPECT_TRUE(result.converged);
+	
+	const auto& nodes = sys.getNodes();
+	
+	// Узел 1: V = 110 кВ, угол ≈ 0°
+	EXPECT_NEAR(nodes[0].V_mag(), 110e3, 1e3);
+	
+	// Узел 2: V ≈ 110 кВ (модуль почти не изменился)
+	EXPECT_GT(nodes[1].V_mag(), 100e3);
+	EXPECT_LT(nodes[1].V_mag(), 115e3);
+	
+	// Угол узла 2 должен быть отрицательным (отстаёт из-за нагрузки)
+	EXPECT_LT(nodes[1].delta(), 0.0);
+	
+	printPowerFlowResults(sys, "Transformer.PhaseShiftingTransformer");
 }
 
 TEST(Transformer, ComplexTapWithPhaseShift) {
-    // Трансформатор с изменением напряжения И сдвигом фазы
-    // k_t = 1.05 * e^(j*10°)
-    PowerSystem sys(100e6, 110e3);
-    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
-    sys.addNode(Node::makePQ(2, 30e6, 15e6, 110e3, 0.0, 110e3));
-    
-    // Комплексный k_t: модуль 1.05, угол 10°
-    double angle_rad = 10.0 * M_PI / 180.0;  // 10° в радианах
-    double magnitude = 1.05;
-    std::complex<double> k_t(magnitude * std::cos(angle_rad), magnitude * std::sin(angle_rad));
-    
-    sys.addLine(Line(1, 1, 2, 5.0, 25.0, k_t));
-    
-    Solver solver(sys);
-    auto result = solver.solve();
-    
-    EXPECT_TRUE(result.converged);
-    
-    const auto& nodes = sys.getNodes();
-    
-    // Проверка баланса мощности
-    auto S_slack = sys.calculateSlackPower();
-    auto flows = sys.calculateLineFlows();
-    
-    EXPECT_NEAR(S_slack.real(), 30e6 + flows[0].S_loss.real(), 1e3);
-    EXPECT_NEAR(S_slack.imag(), 15e6 + flows[0].S_loss.imag(), 1e3);
-    
-    printPowerFlowResults(sys, "Transformer.ComplexTapWithPhaseShift");
+	// Трансформатор с изменением напряжения И сдвигом фазы
+	// k_t = 1.05 * e^(j*10°)
+	PowerSystem sys(100e6, 110e3);
+	sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+	sys.addNode(Node::makePQ(2, 30e6, 15e6, 110e3, 0.0, 110e3));
+	
+	// Комплексный k_t: модуль 1.05, угол 10°
+	double angle_rad = 10.0 * M_PI / 180.0;  // 10° в радианах
+	double magnitude = 1.05;
+	std::complex<double> k_t(magnitude * std::cos(angle_rad), magnitude * std::sin(angle_rad));
+	
+	sys.addLine(Line(1, 1, 2, 5.0, 25.0, k_t));
+	
+	Solver solver(sys);
+	auto result = solver.solve();
+	
+	EXPECT_TRUE(result.converged);
+	
+	const auto& nodes = sys.getNodes();
+	
+	// Проверка баланса мощности
+	auto S_slack = sys.calculateSlackPower();
+	auto flows = sys.calculateLineFlows();
+	
+	EXPECT_NEAR(S_slack.real(), 30e6 + flows[0].S_loss.real(), 1e3);
+	EXPECT_NEAR(S_slack.imag(), 15e6 + flows[0].S_loss.imag(), 1e3);
+	
+	printPowerFlowResults(sys, "Transformer.ComplexTapWithPhaseShift");
 }
 
 TEST(Transformer, PhaseShiftingPowerFlowControl) {
-    // Проверка: фазосдвигающий трансформатор управляет потоком активной мощности
-    PowerSystem sys(100e6, 110e3);
-    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
-    sys.addNode(Node::makePQ(2, 40e6, 10e6, 110e3, 0.0, 110e3));
-    
-    // Без сдвига фазы
-    sys.addLine(Line(1, 1, 2, 2.42, 12.1, std::complex<double>(1.0, 0.0)));
-    
-    Solver solver1(sys);
-    auto result1 = solver1.solve();
-    EXPECT_TRUE(result1.converged);
-    
-    auto flows1 = sys.calculateLineFlows();
-    double P_without_shift = flows1[0].S_from.real();
+	// Проверка: фазосдвигающий трансформатор управляет потоком активной мощности
+	PowerSystem sys(100e6, 110e3);
+	sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+	sys.addNode(Node::makePQ(2, 40e6, 10e6, 110e3, 0.0, 110e3));
+	
+	// Без сдвига фазы
+	sys.addLine(Line(1, 1, 2, 2.42, 12.1, std::complex<double>(1.0, 0.0)));
+	
+	Solver solver1(sys);
+	auto result1 = solver1.solve();
+	EXPECT_TRUE(result1.converged);
+	
+	auto flows1 = sys.calculateLineFlows();
+	double P_without_shift = flows1[0].S_from.real();
 
-    // С сдвигом фазы -5° (увеличивает поток мощности)
-    // С сдвигом фазы -5° (увеличивает поток мощности)
-    PowerSystem sys2(100e6, 110e3); // ← Новый объект!
-    sys2.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
-    sys2.addNode(Node::makePQ(2, 40e6, 10e6, 110e3, 0.0, 110e3));
+	// С сдвигом фазы -5° (увеличивает поток мощности)
+	// С сдвигом фазы -5° (увеличивает поток мощности)
+	PowerSystem sys2(100e6, 110e3); // ← Новый объект!
+	sys2.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+	sys2.addNode(Node::makePQ(2, 40e6, 10e6, 110e3, 0.0, 110e3));
 
-    double angle_rad = -5.0 * M_PI / 180.0;
-    std::complex<double> k_t(std::cos(angle_rad), std::sin(angle_rad));
-    sys2.addLine(Line(1, 1, 2, 2.42, 12.1, k_t));
+	double angle_rad = -5.0 * M_PI / 180.0;
+	std::complex<double> k_t(std::cos(angle_rad), std::sin(angle_rad));
+	sys2.addLine(Line(1, 1, 2, 2.42, 12.1, k_t));
 
-    Solver solver2(sys2);  // ← sys2!
+	Solver solver2(sys2);  // ← sys2!
 	auto result2 = solver2.solve();
 	EXPECT_TRUE(result2.converged);
 
@@ -819,249 +819,249 @@ TEST(Transformer, PhaseShiftingPowerFlowControl) {
 }
 
 TEST(Transformer, ComplexTransformerCascade) {
-    // Каскад трансформаторов с комплексными коэффициентами
-    PowerSystem sys(100e6, 220e3);
-    sys.addNode(Node::makeSlack(1, 220e3, 0.0, 220e3));
-    sys.addNode(Node::makePQ(2, 30e6, 10e6, 110e3, 0.0, 110e3));
-    sys.addNode(Node::makePQ(3, 20e6, 8e6, 10e3, 0.0, 10e3));
-    
-    // Первый трансформатор: 220/110 кВ, k=2.0, угол 3°
-    double angle1 = 3.0 * M_PI / 180.0;
-    std::complex<double> k1(2.0 * std::cos(angle1), 2.0 * std::sin(angle1));
-    
-    // Второй трансформатор: 110/10 кВ, k=11.0, угол -2°
-    double angle2 = -2.0 * M_PI / 180.0;
-    std::complex<double> k2(11.0 * std::cos(angle2), 11.0 * std::sin(angle2));
-    
-    sys.addLine(Line(1, 1, 2, 1.0, 5.0, k1));
-    sys.addLine(Line(2, 2, 3, 0.5, 3.0, k2));
-    
-    Solver solver(sys);
-    auto result = solver.solve();
-    
-    EXPECT_TRUE(result.converged);
-    
-    const auto& nodes = sys.getNodes();
-    
-    // Проверка напряжений
-    EXPECT_GT(nodes[1].V_mag(), 100e3);
-    EXPECT_LT(nodes[1].V_mag(), 120e3);
-    
-    EXPECT_GT(nodes[2].V_mag(), 9e3);
-    EXPECT_LT(nodes[2].V_mag(), 11e3);
-    
-    // Проверка баланса
-    auto S_slack = sys.calculateSlackPower();
-    auto flows = sys.calculateLineFlows();
-    
-    std::complex<double> total_loss = flows[0].S_loss + flows[1].S_loss;
-    EXPECT_NEAR(S_slack.real(), 50e6 + total_loss.real(), 1e3);
-    EXPECT_NEAR(S_slack.imag(), 18e6 + total_loss.imag(), 1e3);
-    
-    printPowerFlowResults(sys, "Transformer.ComplexTransformerCascade");
+	// Каскад трансформаторов с комплексными коэффициентами
+	PowerSystem sys(100e6, 220e3);
+	sys.addNode(Node::makeSlack(1, 220e3, 0.0, 220e3));
+	sys.addNode(Node::makePQ(2, 30e6, 10e6, 110e3, 0.0, 110e3));
+	sys.addNode(Node::makePQ(3, 20e6, 8e6, 10e3, 0.0, 10e3));
+	
+	// Первый трансформатор: 220/110 кВ, k=2.0, угол 3°
+	double angle1 = 3.0 * M_PI / 180.0;
+	std::complex<double> k1(2.0 * std::cos(angle1), 2.0 * std::sin(angle1));
+	
+	// Второй трансформатор: 110/10 кВ, k=11.0, угол -2°
+	double angle2 = -2.0 * M_PI / 180.0;
+	std::complex<double> k2(11.0 * std::cos(angle2), 11.0 * std::sin(angle2));
+	
+	sys.addLine(Line(1, 1, 2, 1.0, 5.0, k1));
+	sys.addLine(Line(2, 2, 3, 0.5, 3.0, k2));
+	
+	Solver solver(sys);
+	auto result = solver.solve();
+	
+	EXPECT_TRUE(result.converged);
+	
+	const auto& nodes = sys.getNodes();
+	
+	// Проверка напряжений
+	EXPECT_GT(nodes[1].V_mag(), 100e3);
+	EXPECT_LT(nodes[1].V_mag(), 120e3);
+	
+	EXPECT_GT(nodes[2].V_mag(), 9e3);
+	EXPECT_LT(nodes[2].V_mag(), 11e3);
+	
+	// Проверка баланса
+	auto S_slack = sys.calculateSlackPower();
+	auto flows = sys.calculateLineFlows();
+	
+	std::complex<double> total_loss = flows[0].S_loss + flows[1].S_loss;
+	EXPECT_NEAR(S_slack.real(), 50e6 + total_loss.real(), 1e3);
+	EXPECT_NEAR(S_slack.imag(), 18e6 + total_loss.imag(), 1e3);
+	
+	printPowerFlowResults(sys, "Transformer.ComplexTransformerCascade");
 }
 
 
 //==========================PV nodes test==================================
 
 TEST(Solver, SimplePVNode) {
-    PowerSystem sys(100e6, 110e3);
-    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
-    sys.addNode(Node::makePV(2, 50e6, 108e3, 108e3, 0.0, 110e3));  // PV: P=50 МВт, |V|=108 кВ
-    
-    sys.addLine(Line(1, 1, 2, 2.42, 12.1));
-    
-    Solver solver(sys);
-    auto result = solver.solve();
-    
-    EXPECT_TRUE(result.converged);
-    
-    const auto& nodes = sys.getNodes();
-    // Модуль напряжения PV-узла должен остаться 108 кВ
-    EXPECT_NEAR(nodes[1].V_mag(), 108e3, 1e3);
-    // Угол должен быть отрицательным (генерация)
-    EXPECT_GT(nodes[1].delta(), 0.0);
-    
-    printPowerFlowResults(sys, "SimplePVNode");
+	PowerSystem sys(100e6, 110e3);
+	sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+	sys.addNode(Node::makePV(2, 50e6, 108e3, 108e3, 0.0, 110e3));  // PV: P=50 МВт, |V|=108 кВ
+	
+	sys.addLine(Line(1, 1, 2, 2.42, 12.1));
+	
+	Solver solver(sys);
+	auto result = solver.solve();
+	
+	EXPECT_TRUE(result.converged);
+	
+	const auto& nodes = sys.getNodes();
+	// Модуль напряжения PV-узла должен остаться 108 кВ
+	EXPECT_NEAR(nodes[1].V_mag(), 108e3, 1e3);
+	// Угол должен быть отрицательным (генерация)
+	EXPECT_GT(nodes[1].delta(), 0.0);
+	
+	printPowerFlowResults(sys, "SimplePVNode");
 }
 
 TEST(Solver, MixedPQandPV) {
-    PowerSystem sys(100e6, 110e3);
-    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
-    sys.addNode(Node::makePV(2, 40e6, 108e3, 108e3, 0.0, 110e3));  // PV
-    sys.addNode(Node::makePQ(3, 30e6, 10e6, 110e3, 0.0, 110e3));   // PQ
-    
-    sys.addLine(Line(1, 1, 2, 5.0, 25.0));
-    sys.addLine(Line(2, 2, 3, 4.0, 20.0));
-    sys.addLine(Line(3, 1, 3, 6.0, 30.0));
-    
-    Solver solver(sys);
-    auto result = solver.solve();
-    
-    EXPECT_TRUE(result.converged);
-    
-    const auto& nodes = sys.getNodes();
-    // PV-узел: |V| = 108 кВ
-    EXPECT_NEAR(nodes[1].V_mag(), 108e3, 1e3);
-    // PQ-узел: |V| < 110 кВ
-    EXPECT_LT(nodes[2].V_mag(), 110e3);
-    
-    printPowerFlowResults(sys, "MixedPQandPV");
+	PowerSystem sys(100e6, 110e3);
+	sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+	sys.addNode(Node::makePV(2, 40e6, 108e3, 108e3, 0.0, 110e3));  // PV
+	sys.addNode(Node::makePQ(3, 30e6, 10e6, 110e3, 0.0, 110e3));   // PQ
+	
+	sys.addLine(Line(1, 1, 2, 5.0, 25.0));
+	sys.addLine(Line(2, 2, 3, 4.0, 20.0));
+	sys.addLine(Line(3, 1, 3, 6.0, 30.0));
+	
+	Solver solver(sys);
+	auto result = solver.solve();
+	
+	EXPECT_TRUE(result.converged);
+	
+	const auto& nodes = sys.getNodes();
+	// PV-узел: |V| = 108 кВ
+	EXPECT_NEAR(nodes[1].V_mag(), 108e3, 1e3);
+	// PQ-узел: |V| < 110 кВ
+	EXPECT_LT(nodes[2].V_mag(), 110e3);
+	
+	printPowerFlowResults(sys, "MixedPQandPV");
 }
 
 TEST(Solver, PVNodePowerBalance) {
-    PowerSystem sys(100e6, 110e3);
-    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
-    sys.addNode(Node::makePV(2, 50e6, 108e3, 108e3, 0.0, 110e3));
-    sys.addNode(Node::makePQ(3, 30e6, 10e6, 110e3, 0.0, 110e3));
-    
-    sys.addLine(Line(1, 1, 2, 5.0, 25.0));
-    sys.addLine(Line(2, 2, 3, 4.0, 20.0));
-    
-    Solver solver(sys);
-    solver.solve();
-    
-    auto S_slack = sys.calculateSlackPower();
-    auto flows = sys.calculateLineFlows();
-    
-    // Суммарная генерация = Slack + PV
-    double P_gen_total = S_slack.real() + 50e6;
-    double P_load = 30e6;
-    
-    // Суммарные потери
-    std::complex<double> total_loss(0, 0);
-    for (const auto& flow : flows) {
-        total_loss += flow.S_loss;
-    }
-    
-    // Баланс: генерация = нагрузка + потери
-    EXPECT_NEAR(P_gen_total, P_load + total_loss.real(), 1e3);
+	PowerSystem sys(100e6, 110e3);
+	sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+	sys.addNode(Node::makePV(2, 50e6, 108e3, 108e3, 0.0, 110e3));
+	sys.addNode(Node::makePQ(3, 30e6, 10e6, 110e3, 0.0, 110e3));
+	
+	sys.addLine(Line(1, 1, 2, 5.0, 25.0));
+	sys.addLine(Line(2, 2, 3, 4.0, 20.0));
+	
+	Solver solver(sys);
+	solver.solve();
+	
+	auto S_slack = sys.calculateSlackPower();
+	auto flows = sys.calculateLineFlows();
+	
+	// Суммарная генерация = Slack + PV
+	double P_gen_total = S_slack.real() + 50e6;
+	double P_load = 30e6;
+	
+	// Суммарные потери
+	std::complex<double> total_loss(0, 0);
+	for (const auto& flow : flows) {
+		total_loss += flow.S_loss;
+	}
+	
+	// Баланс: генерация = нагрузка + потери
+	EXPECT_NEAR(P_gen_total, P_load + total_loss.real(), 1e3);
 }
 
 // ==================== Shunt Admittance ====================
 
 TEST(Shunt, LineWithShuntNoLoad) {
-    // Линия с шунтом без нагрузки
-    PowerSystem sys(100e6, 110e3);
-    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
-    sys.addNode(Node::makePQ(2, 0.0, 0.0, 110e3, 0.0, 110e3));
-    
-    // Линия с шунтом Y = 0 + j0.001 См (Π-образная, делится пополам)
-    sys.addLine(Line(1, 1, 2, 2.42, 12.1, std::complex<double>(1.0, 0.0), 
-                     std::complex<double>(0.0, 0.001)));
-    
-    Solver solver(sys);
-    auto result = solver.solve();
-    
-    EXPECT_TRUE(result.converged);
-    
-    const auto& nodes = sys.getNodes();
-    // Без нагрузки напряжения близки к 110 кВ
-    EXPECT_NEAR(nodes[1].V_mag(), 110e3, 1e3);
-    
-    printPowerFlowResults(sys, "Shunt.LineWithShuntNoLoad");
+	// Линия с шунтом без нагрузки
+	PowerSystem sys(100e6, 110e3);
+	sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+	sys.addNode(Node::makePQ(2, 0.0, 0.0, 110e3, 0.0, 110e3));
+	
+	// Линия с шунтом Y = 0 + j0.001 См (Π-образная, делится пополам)
+	sys.addLine(Line(1, 1, 2, 2.42, 12.1, std::complex<double>(1.0, 0.0), 
+					 std::complex<double>(0.0, 0.001)));
+	
+	Solver solver(sys);
+	auto result = solver.solve();
+	
+	EXPECT_TRUE(result.converged);
+	
+	const auto& nodes = sys.getNodes();
+	// Без нагрузки напряжения близки к 110 кВ
+	EXPECT_NEAR(nodes[1].V_mag(), 110e3, 1e3);
+	
+	printPowerFlowResults(sys, "Shunt.LineWithShuntNoLoad");
 }
 
 TEST(Shunt, LineWithShuntAndLoad) {
-    // Линия с шунтом и нагрузкой
-    PowerSystem sys(100e6, 110e3);
-    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
-    sys.addNode(Node::makePQ(2, 50e6, 20e6, 110e3, 0.0, 110e3));
-    
-    // Линия с шунтом Y = 0 + j0.0005 См
-    sys.addLine(Line(1, 1, 2, 2.42, 12.1, std::complex<double>(1.0, 0.0), 
-                     std::complex<double>(0.0, 0.0005)));
-    
-    Solver solver(sys);
-    auto result = solver.solve();
-    
-    EXPECT_TRUE(result.converged);
-    
-    // Сверить с pandapower
-    const auto& nodes = sys.getNodes();
-    // checkNodeVoltage(nodes[1], expected_V, expected_delta);
-    
-    printPowerFlowResults(sys, "Shunt.LineWithShuntAndLoad");
+	// Линия с шунтом и нагрузкой
+	PowerSystem sys(100e6, 110e3);
+	sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+	sys.addNode(Node::makePQ(2, 50e6, 20e6, 110e3, 0.0, 110e3));
+	
+	// Линия с шунтом Y = 0 + j0.0005 См
+	sys.addLine(Line(1, 1, 2, 2.42, 12.1, std::complex<double>(1.0, 0.0), 
+					 std::complex<double>(0.0, 0.0005)));
+	
+	Solver solver(sys);
+	auto result = solver.solve();
+	
+	EXPECT_TRUE(result.converged);
+	
+	// Сверить с pandapower
+	const auto& nodes = sys.getNodes();
+	// checkNodeVoltage(nodes[1], expected_V, expected_delta);
+	
+	printPowerFlowResults(sys, "Shunt.LineWithShuntAndLoad");
 }
 
 TEST(Shunt, TransformerWithShunt) {
-    // Трансформатор с шунтом (Г-образная схема)
-    PowerSystem sys(100e6, 110e3);
-    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
-    sys.addNode(Node::makePQ(2, 20e6, 10e6, 10e3, 0.0, 10e3));
-    
-    // Трансформатор 110/10 кВ с шунтом на стороне ВН
-    auto tr = Line(1, 1, 2, 0.5, 10.0, 
-                                     std::complex<double>(11.0, 0.0),
-                                     std::complex<double>(0.0, 0.0001));
-    sys.addLine(tr);
-    
-    Solver solver(sys);
-    auto result = solver.solve();
-    
-    EXPECT_TRUE(result.converged);
-    
-    const auto& nodes = sys.getNodes();
-    EXPECT_GT(nodes[1].V_mag(), 9e3);
-    EXPECT_LT(nodes[1].V_mag(), 11e3);
-    
-    printPowerFlowResults(sys, "Shunt.TransformerWithShunt");
+	// Трансформатор с шунтом (Г-образная схема)
+	PowerSystem sys(100e6, 110e3);
+	sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+	sys.addNode(Node::makePQ(2, 20e6, 10e6, 10e3, 0.0, 10e3));
+	
+	// Трансформатор 110/10 кВ с шунтом на стороне ВН
+	auto tr = Line(1, 1, 2, 0.5, 10.0, 
+									 std::complex<double>(11.0, 0.0),
+									 std::complex<double>(0.0, 0.0001));
+	sys.addLine(tr);
+	
+	Solver solver(sys);
+	auto result = solver.solve();
+	
+	EXPECT_TRUE(result.converged);
+	
+	const auto& nodes = sys.getNodes();
+	EXPECT_GT(nodes[1].V_mag(), 9e3);
+	EXPECT_LT(nodes[1].V_mag(), 11e3);
+	
+	printPowerFlowResults(sys, "Shunt.TransformerWithShunt");
 }
 
 TEST(Shunt, PowerBalanceWithShunt) {
-    // Баланс мощностей с шунтом
-    PowerSystem sys(100e6, 110e3);
-    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
-    sys.addNode(Node::makePQ(2, 30e6, 10e6, 110e3, 0.0, 110e3));
-    
-    sys.addLine(Line(1, 1, 2, 5.0, 25.0, std::complex<double>(1.0, 0.0), 
-                     std::complex<double>(0.0, 0.001)));
-    
-    Solver solver(sys);
-    solver.solve();
-    
-    auto S_slack = sys.calculateSlackPower();
-    auto flows = sys.calculateLineFlows();
-    
-    // Баланс P: генерация = нагрузка + потери
-    EXPECT_NEAR(S_slack.real(), 30e6 + flows[0].S_loss.real(), 1e3);
-    
-    printPowerFlowResults(sys, "Shunt.PowerBalanceWithShunt");
+	// Баланс мощностей с шунтом
+	PowerSystem sys(100e6, 110e3);
+	sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+	sys.addNode(Node::makePQ(2, 30e6, 10e6, 110e3, 0.0, 110e3));
+	
+	sys.addLine(Line(1, 1, 2, 5.0, 25.0, std::complex<double>(1.0, 0.0), 
+					 std::complex<double>(0.0, 0.001)));
+	
+	Solver solver(sys);
+	solver.solve();
+	
+	auto S_slack = sys.calculateSlackPower();
+	auto flows = sys.calculateLineFlows();
+	
+	// Баланс P: генерация = нагрузка + потери
+	EXPECT_NEAR(S_slack.real(), 30e6 + flows[0].S_loss.real(), 1e3);
+	
+	printPowerFlowResults(sys, "Shunt.PowerBalanceWithShunt");
 }
 
 TEST(Shunt, BackwardCompatibility) {
-    // Линия без шунта должна давать тот же результат
-    PowerSystem sys(100e6, 110e3);
-    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
-    sys.addNode(Node::makePQ(2, 50e6, 20e6, 110e3, 0.0, 110e3));
-    
-    sys.addLine(Line(1, 1, 2, 2.42, 12.1));  // Y_shunt = 0 по умолчанию
-    
-    Solver solver(sys);
-    auto result = solver.solve();
-    
-    EXPECT_TRUE(result.converged);
-    
-    const auto& nodes = sys.getNodes();
-    checkNodeVoltage(nodes[1], 106.4662, -2.7241);
+	// Линия без шунта должна давать тот же результат
+	PowerSystem sys(100e6, 110e3);
+	sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+	sys.addNode(Node::makePQ(2, 50e6, 20e6, 110e3, 0.0, 110e3));
+	
+	sys.addLine(Line(1, 1, 2, 2.42, 12.1));  // Y_shunt = 0 по умолчанию
+	
+	Solver solver(sys);
+	auto result = solver.solve();
+	
+	EXPECT_TRUE(result.converged);
+	
+	const auto& nodes = sys.getNodes();
+	checkNodeVoltage(nodes[1], 106.4662, -2.7241);
 }
 
 TEST(Shunt, ComplexShuntWithConductance) {
-    // Шунт с активной проводимостью (G + jB)
-    PowerSystem sys(100e6, 110e3);
-    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
-    sys.addNode(Node::makePQ(2, 50e6, 20e6, 110e3, 0.0, 110e3));
-    
-    // Шунт с G = 0.0001 См, B = 0.0005 См
-    sys.addLine(Line(1, 1, 2, 2.42, 12.1, std::complex<double>(1.0, 0.0), 
-                     std::complex<double>(0.0001, 0.0005)));
-    
-    Solver solver(sys);
-    auto result = solver.solve();
-    
-    EXPECT_TRUE(result.converged);
-    
-    printPowerFlowResults(sys, "Shunt.ComplexShuntWithConductance");
+	// Шунт с активной проводимостью (G + jB)
+	PowerSystem sys(100e6, 110e3);
+	sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+	sys.addNode(Node::makePQ(2, 50e6, 20e6, 110e3, 0.0, 110e3));
+	
+	// Шунт с G = 0.0001 См, B = 0.0005 См
+	sys.addLine(Line(1, 1, 2, 2.42, 12.1, std::complex<double>(1.0, 0.0), 
+					 std::complex<double>(0.0001, 0.0005)));
+	
+	Solver solver(sys);
+	auto result = solver.solve();
+	
+	EXPECT_TRUE(result.converged);
+	
+	printPowerFlowResults(sys, "Shunt.ComplexShuntWithConductance");
 }
 
 // ==================== Network Reconfiguration ====================
@@ -1069,393 +1069,393 @@ TEST(Shunt, ComplexShuntWithConductance) {
 
 TEST(Reconfiguration, DisconnectOneOfParallelLines) {
 	
-    // Две параллельные линии между узлами 1 и 2.
-    // Отключаем одну — сеть должна работать, но с худшими параметрами.
-    PowerSystem sys(100e6, 110e3);
-    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
-    sys.addNode(Node::makePQ(2, 50e6, 20e6, 110e3, 0.0, 110e3));
-    
-    // Две одинаковые линии параллельно
-    sys.addLine(Line(1, 1, 2, 2.42, 12.1));
-    sys.addLine(Line(2, 1, 2, 2.42, 12.1));
-    
-    Solver solver(sys);
-    
-    // Сначала считаем с двумя линиями
-    auto result1 = solver.solve();
-    EXPECT_TRUE(result1.converged);
-    
-    double V_before = sys.getNode(2).V_mag();
-    double delta_before = sys.getNode(2).delta();
-    
-    auto flows_before = sys.calculateLineFlows();
-    double P_loss_before = flows_before[0].S_loss.real() + flows_before[1].S_loss.real();
-    
-    printPowerFlowResults(sys, "Reconfig.BeforeDisconnect");
-    
-    // Отключаем одну линию
-    sys.disconnectLine(2);
+	// Две параллельные линии между узлами 1 и 2.
+	// Отключаем одну — сеть должна работать, но с худшими параметрами.
+	PowerSystem sys(100e6, 110e3);
+	sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+	sys.addNode(Node::makePQ(2, 50e6, 20e6, 110e3, 0.0, 110e3));
+	
+	// Две одинаковые линии параллельно
+	sys.addLine(Line(1, 1, 2, 2.42, 12.1));
+	sys.addLine(Line(2, 1, 2, 2.42, 12.1));
+	
+	Solver solver(sys);
+	
+	// Сначала считаем с двумя линиями
+	auto result1 = solver.solve();
+	EXPECT_TRUE(result1.converged);
+	
+	double V_before = sys.getNode(2).V_mag();
+	double delta_before = sys.getNode(2).delta();
+	
+	auto flows_before = sys.calculateLineFlows();
+	double P_loss_before = flows_before[0].S_loss.real() + flows_before[1].S_loss.real();
+	
+	printPowerFlowResults(sys, "Reconfig.BeforeDisconnect");
+	
+	// Отключаем одну линию
+	sys.disconnectLine(2);
 
-    // Пересоздаём солвер (т.к. он кэширует данные)
-    Solver solver2(sys);
-    auto result2 = solver2.solve();
-    
-    // Должен сойтись
-    EXPECT_TRUE(result2.converged);
-    
-    double V_after = sys.getNode(2).V_mag();
-    double delta_after = sys.getNode(2).delta();
-    
-    auto flows_after = sys.calculateLineFlows();
-    // Только одна активная линия
-    double P_loss_after = 0;
-    for (const auto& f : flows_after) {
-        if (sys.getLine(f.line_id).isEnabled()) {
-            P_loss_after += f.S_loss.real();
-        }
-    }
-    
-    printPowerFlowResults(sys, "Reconfig.AfterDisconnect");
-    
-    // Физические проверки:
-    // 1. Напряжение должно упасть (сопротивление выросло в 2 раза)
-    EXPECT_LT(V_after, V_before);
-    
-    // 2. Угол должен стать больше по модулю (больше δ для передачи той же мощности)
-    EXPECT_LT(delta_after, delta_before);
-    
-    // 3. Потери должны вырасти (примерно в 2 раза для одинаковых линий)
-    EXPECT_GT(P_loss_after, P_loss_before * 1.5);
-    EXPECT_LT(P_loss_after, P_loss_before * 3.0);
+	// Пересоздаём солвер (т.к. он кэширует данные)
+	Solver solver2(sys);
+	auto result2 = solver2.solve();
+	
+	// Должен сойтись
+	EXPECT_TRUE(result2.converged);
+	
+	double V_after = sys.getNode(2).V_mag();
+	double delta_after = sys.getNode(2).delta();
+	
+	auto flows_after = sys.calculateLineFlows();
+	// Только одна активная линия
+	double P_loss_after = 0;
+	for (const auto& f : flows_after) {
+		if (sys.getLine(f.line_id).isEnabled()) {
+			P_loss_after += f.S_loss.real();
+		}
+	}
+	
+	printPowerFlowResults(sys, "Reconfig.AfterDisconnect");
+	
+	// Физические проверки:
+	// 1. Напряжение должно упасть (сопротивление выросло в 2 раза)
+	EXPECT_LT(V_after, V_before);
+	
+	// 2. Угол должен стать больше по модулю (больше δ для передачи той же мощности)
+	EXPECT_LT(delta_after, delta_before);
+	
+	// 3. Потери должны вырасти (примерно в 2 раза для одинаковых линий)
+	EXPECT_GT(P_loss_after, P_loss_before * 1.5);
+	EXPECT_LT(P_loss_after, P_loss_before * 3.0);
 }
 
 TEST(Reconfiguration, DisconnectAndReconnect) {
-    // Отключение и повторное включение должно возвращать систему в исходное состояние
-    PowerSystem sys(100e6, 110e3);
-    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
-    sys.addNode(Node::makePQ(2, 50e6, 20e6, 110e3, 0.0, 110e3));
-    
-    sys.addLine(Line(1, 1, 2, 2.42, 12.1));
-    sys.addLine(Line(2, 1, 2, 2.42, 12.1));
-    
-    // Считаем исходный режим
-    Solver solver1(sys);
-    solver1.solve();
-    double V_original = sys.getNode(2).V_mag();
-    double delta_original = sys.getNode(2).delta();
-    
-    // Отключаем линию
-    sys.disconnectLine(2);
-    Solver solver2(sys);
-    solver2.solve();
-    
-    // Включаем обратно
-    sys.connectLine(2);
-    Solver solver3(sys);
-    solver3.solve();
-    
-    double V_restored = sys.getNode(2).V_mag();
-    double delta_restored = sys.getNode(2).delta();
-    
-    // Должно вернуться к исходному состоянию
-    EXPECT_NEAR(V_restored, V_original, 1e-3);
-    EXPECT_NEAR(delta_restored, delta_original, 1e-6);
+	// Отключение и повторное включение должно возвращать систему в исходное состояние
+	PowerSystem sys(100e6, 110e3);
+	sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+	sys.addNode(Node::makePQ(2, 50e6, 20e6, 110e3, 0.0, 110e3));
+	
+	sys.addLine(Line(1, 1, 2, 2.42, 12.1));
+	sys.addLine(Line(2, 1, 2, 2.42, 12.1));
+	
+	// Считаем исходный режим
+	Solver solver1(sys);
+	solver1.solve();
+	double V_original = sys.getNode(2).V_mag();
+	double delta_original = sys.getNode(2).delta();
+	
+	// Отключаем линию
+	sys.disconnectLine(2);
+	Solver solver2(sys);
+	solver2.solve();
+	
+	// Включаем обратно
+	sys.connectLine(2);
+	Solver solver3(sys);
+	solver3.solve();
+	
+	double V_restored = sys.getNode(2).V_mag();
+	double delta_restored = sys.getNode(2).delta();
+	
+	// Должно вернуться к исходному состоянию
+	EXPECT_NEAR(V_restored, V_original, 1e-3);
+	EXPECT_NEAR(delta_restored, delta_original, 1e-6);
 }
 
 TEST(Reconfiguration, DisconnectOnlyLineThrows) {
-    // Если отключить единственную линию, сеть станет несвязной
-    PowerSystem sys(100e6, 110e3);
-    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
-    sys.addNode(Node::makePQ(2, 50e6, 20e6, 110e3, 0.0, 110e3));
-    
-    sys.addLine(Line(1, 1, 2, 2.42, 12.1));
+	// Если отключить единственную линию, сеть станет несвязной
+	PowerSystem sys(100e6, 110e3);
+	sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+	sys.addNode(Node::makePQ(2, 50e6, 20e6, 110e3, 0.0, 110e3));
+	
+	sys.addLine(Line(1, 1, 2, 2.42, 12.1));
 
-    sys.disconnectLine(1);
+	sys.disconnectLine(1);
 
-    // Должно бросить исключение о несвязной сети
-    EXPECT_THROW(sys.buildYBus(), std::runtime_error);
+	// Должно бросить исключение о несвязной сети
+	EXPECT_THROW(sys.buildYBus(), std::runtime_error);
 }
 
 TEST(Reconfiguration, DisconnectLineToLoadNode) {
-    // Трёхузловая сеть. Отключаем линию к узлу с нагрузкой.
-    // Узел 3 станет изолированным → исключение.
-    PowerSystem sys(100e6, 110e3);
-    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
-    sys.addNode(Node::makePQ(2, 30e6, 10e6, 110e3, 0.0, 110e3));
-    sys.addNode(Node::makePQ(3, 20e6, 8e6, 110e3, 0.0, 110e3));
-    
-    sys.addLine(Line(1, 1, 2, 5.0, 25.0));
-    sys.addLine(Line(2, 2, 3, 4.0, 20.0));  // Единственная связь с узлом 3
-    
-    // Сначала всё работает
-    Solver solver1(sys);
-    auto result = solver1.solve();
-    EXPECT_TRUE(result.converged);
-    
-    // Отключаем линию 2-3
-    sys.disconnectLine(2);
+	// Трёхузловая сеть. Отключаем линию к узлу с нагрузкой.
+	// Узел 3 станет изолированным → исключение.
+	PowerSystem sys(100e6, 110e3);
+	sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+	sys.addNode(Node::makePQ(2, 30e6, 10e6, 110e3, 0.0, 110e3));
+	sys.addNode(Node::makePQ(3, 20e6, 8e6, 110e3, 0.0, 110e3));
+	
+	sys.addLine(Line(1, 1, 2, 5.0, 25.0));
+	sys.addLine(Line(2, 2, 3, 4.0, 20.0));  // Единственная связь с узлом 3
+	
+	// Сначала всё работает
+	Solver solver1(sys);
+	auto result = solver1.solve();
+	EXPECT_TRUE(result.converged);
+	
+	// Отключаем линию 2-3
+	sys.disconnectLine(2);
 
-    // Теперь сеть несвязная
-    EXPECT_THROW(sys.buildYBus(), std::runtime_error);
+	// Теперь сеть несвязная
+	EXPECT_THROW(sys.buildYBus(), std::runtime_error);
 }
 
 TEST(Reconfiguration, SequentialDisconnections) {
-    // Каскадное отключение: одна за другой
-    PowerSystem sys(100e6, 110e3);
-    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
-    sys.addNode(Node::makePQ(2, 30e6, 10e6, 110e3, 0.0, 110e3));
-    sys.addNode(Node::makePQ(3, 25e6, 8e6, 110e3, 0.0, 110e3));
-    
-    // Три параллельные линии между 1 и 2
-    sys.addLine(Line(1, 1, 2, 10.0, 50.0));
-    sys.addLine(Line(2, 1, 2, 10.0, 50.0));
-    sys.addLine(Line(3, 1, 2, 10.0, 50.0));
-    
-    // Линия 2-3
-    sys.addLine(Line(4, 2, 3, 8.0, 40.0));
-    
-    // Считаем с тремя линиями
-    Solver solver1(sys);
-    solver1.solve();
-    double V2_initial = sys.getNode(2).V_mag();
-    
-    // Отключаем одну
-    sys.disconnectLine(1);
-    Solver solver2(sys);
-    solver2.solve();
-    double V2_after1 = sys.getNode(2).V_mag();
-    
-    // Отключаем вторую
-    sys.disconnectLine(2);
-    Solver solver3(sys);
-    solver3.solve();
-    double V2_after2 = sys.getNode(2).V_mag();
-    
-    // Напряжение должно последовательно падать
-    EXPECT_GT(V2_initial, V2_after1);
-    EXPECT_GT(V2_after1, V2_after2);
-    
-    // Отключаем третью — сеть станет несвязной
-    sys.disconnectLine(3);
-    EXPECT_THROW(sys.buildYBus(), std::runtime_error);
+	// Каскадное отключение: одна за другой
+	PowerSystem sys(100e6, 110e3);
+	sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+	sys.addNode(Node::makePQ(2, 30e6, 10e6, 110e3, 0.0, 110e3));
+	sys.addNode(Node::makePQ(3, 25e6, 8e6, 110e3, 0.0, 110e3));
+	
+	// Три параллельные линии между 1 и 2
+	sys.addLine(Line(1, 1, 2, 10.0, 50.0));
+	sys.addLine(Line(2, 1, 2, 10.0, 50.0));
+	sys.addLine(Line(3, 1, 2, 10.0, 50.0));
+	
+	// Линия 2-3
+	sys.addLine(Line(4, 2, 3, 8.0, 40.0));
+	
+	// Считаем с тремя линиями
+	Solver solver1(sys);
+	solver1.solve();
+	double V2_initial = sys.getNode(2).V_mag();
+	
+	// Отключаем одну
+	sys.disconnectLine(1);
+	Solver solver2(sys);
+	solver2.solve();
+	double V2_after1 = sys.getNode(2).V_mag();
+	
+	// Отключаем вторую
+	sys.disconnectLine(2);
+	Solver solver3(sys);
+	solver3.solve();
+	double V2_after2 = sys.getNode(2).V_mag();
+	
+	// Напряжение должно последовательно падать
+	EXPECT_GT(V2_initial, V2_after1);
+	EXPECT_GT(V2_after1, V2_after2);
+	
+	// Отключаем третью — сеть станет несвязной
+	sys.disconnectLine(3);
+	EXPECT_THROW(sys.buildYBus(), std::runtime_error);
 }
 
 TEST(Reconfiguration, DisconnectTransformer) {
-    // Отключение трансформатора
-    PowerSystem sys(100e6, 110e3);
-    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
-    sys.addNode(Node::makePQ(2, 20e6, 10e6, 10e3, 0.0, 10e3));
-    
-    // Два параллельных трансформатора
-    sys.addLine(Line(1, 1, 2, 0.5, 10.0, 
-                                       std::complex<double>(11.0, 0.0)));
-    sys.addLine(Line(2, 1, 2, 0.5, 10.0, 
-                                       std::complex<double>(11.0, 0.0)));
-    
-    Solver solver1(sys);
-    solver1.solve();
-    double V2_before = sys.getNode(2).V_mag();
-    
-    // Отключаем один трансформатор
-    sys.disconnectLine(2);
-    
-    Solver solver2(sys);
-    auto result = solver2.solve();
-    
-    EXPECT_TRUE(result.converged);
-    
-    double V2_after = sys.getNode(2).V_mag();
-    
-    // Напряжение должно упасть (импеданс вырос)
-    EXPECT_LT(V2_after, V2_before);
-    
-    printPowerFlowResults(sys, "Reconfig.TransformerDisconnect");
+	// Отключение трансформатора
+	PowerSystem sys(100e6, 110e3);
+	sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+	sys.addNode(Node::makePQ(2, 20e6, 10e6, 10e3, 0.0, 10e3));
+	
+	// Два параллельных трансформатора
+	sys.addLine(Line(1, 1, 2, 0.5, 10.0, 
+									   std::complex<double>(11.0, 0.0)));
+	sys.addLine(Line(2, 1, 2, 0.5, 10.0, 
+									   std::complex<double>(11.0, 0.0)));
+	
+	Solver solver1(sys);
+	solver1.solve();
+	double V2_before = sys.getNode(2).V_mag();
+	
+	// Отключаем один трансформатор
+	sys.disconnectLine(2);
+	
+	Solver solver2(sys);
+	auto result = solver2.solve();
+	
+	EXPECT_TRUE(result.converged);
+	
+	double V2_after = sys.getNode(2).V_mag();
+	
+	// Напряжение должно упасть (импеданс вырос)
+	EXPECT_LT(V2_after, V2_before);
+	
+	printPowerFlowResults(sys, "Reconfig.TransformerDisconnect");
 }
 
 TEST(Reconfiguration, VoltageCollapseApproach) {
-    // Тестируем приближение к пределу по напряжению
-    // Постепенно увеличиваем нагрузку и отключаем линии
-    PowerSystem sys(100e6, 110e3);
-    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
-    sys.addNode(Node::makePQ(2, 10e6, 4e6, 110e3, 0.0, 110e3));
-    
-    sys.addLine(Line(1, 1, 2, 2.42, 12.1));
-    sys.addLine(Line(2, 1, 2, 2.42, 12.1));
-    
-    std::vector<double> loads = {10e6, 30e6, 50e6, 70e6, 90e6};
-    
-    for (size_t load_idx = 0; load_idx < loads.size(); ++load_idx) {
-        double load = loads[load_idx];
-        
-        // Обновляем нагрузку (пересоздаём узел)
-        sys.getNode(2) = Node::makePQ(2, load, load * 0.4, 110e3, 0.0, 110e3);
-        
-        // При чётных индексах — обе линии, при нечётных — одна
-        if (load_idx % 2 == 1) {
-          sys.disconnectLine(2);
-        } else {
-          sys.connectLine(2);
-        }
-        
-        Solver solver(sys);
-        auto result = solver.solve();
-        
-        if (result.converged) {
-            double V = sys.getNode(2).V_mag();
-            std::cout << "Load = " << load / 1e6 << " МВт, "
-                      << (load_idx % 2 == 0 ? "2 lines" : "1 line") << ": "
-                      << "V = " << V / 1000.0 << " кВ, "
-                      << "converged in " << result.iterations << " iterations" << std::endl;
-            
-            // Напряжение должно быть в разумных пределах
-            EXPECT_GT(V, 70e3);
-            EXPECT_LT(V, 115e3);
-        } else {
-            std::cout << "Load = " << load / 1e6 << " МВт: НЕ СОШЕЛСЯ" << std::endl;
-        }
-    }
+	// Тестируем приближение к пределу по напряжению
+	// Постепенно увеличиваем нагрузку и отключаем линии
+	PowerSystem sys(100e6, 110e3);
+	sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+	sys.addNode(Node::makePQ(2, 10e6, 4e6, 110e3, 0.0, 110e3));
+	
+	sys.addLine(Line(1, 1, 2, 2.42, 12.1));
+	sys.addLine(Line(2, 1, 2, 2.42, 12.1));
+	
+	std::vector<double> loads = {10e6, 30e6, 50e6, 70e6, 90e6};
+	
+	for (size_t load_idx = 0; load_idx < loads.size(); ++load_idx) {
+		double load = loads[load_idx];
+		
+		// Обновляем нагрузку (пересоздаём узел)
+		sys.getNode(2) = Node::makePQ(2, load, load * 0.4, 110e3, 0.0, 110e3);
+		
+		// При чётных индексах — обе линии, при нечётных — одна
+		if (load_idx % 2 == 1) {
+		  sys.disconnectLine(2);
+		} else {
+		  sys.connectLine(2);
+		}
+		
+		Solver solver(sys);
+		auto result = solver.solve();
+		
+		if (result.converged) {
+			double V = sys.getNode(2).V_mag();
+			std::cout << "Load = " << load / 1e6 << " МВт, "
+					  << (load_idx % 2 == 0 ? "2 lines" : "1 line") << ": "
+					  << "V = " << V / 1000.0 << " кВ, "
+					  << "converged in " << result.iterations << " iterations" << std::endl;
+			
+			// Напряжение должно быть в разумных пределах
+			EXPECT_GT(V, 70e3);
+			EXPECT_LT(V, 115e3);
+		} else {
+			std::cout << "Load = " << load / 1e6 << " МВт: НЕ СОШЕЛСЯ" << std::endl;
+		}
+	}
 }
 
 TEST(Reconfiguration, RingNetworkOpenLoop) {
-    PowerSystem sys(100e6, 110e3);
-    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
-    sys.addNode(Node::makePQ(2, 20e6, 7.5e6, 110e3, 0.0, 110e3));  // Было 40/15
-    sys.addNode(Node::makePQ(3, 15e6, 5e6, 110e3, 0.0, 110e3));   // Было 30/10
-    
-    sys.addLine(Line(1, 1, 2, 10.0, 50.0));
-    sys.addLine(Line(2, 2, 3, 8.0, 40.0));
-    sys.addLine(Line(3, 3, 1, 12.0, 60.0));
-    
-    std::cout << "\n=== Считаем кольцевую сеть ===" << std::endl;
-    
-    Solver solver1(sys);
-    auto result1 = solver1.solve();
-    
-    std::cout << "Converged: " << result1.converged << std::endl;
-    std::cout << "Iterations: " << result1.iterations << std::endl;
-    std::cout << "Max mismatch: " << result1.max_mismatch << std::endl;
-    
-    EXPECT_TRUE(result1.converged);
-    
-    double V2_ring = sys.getNode(2).V_mag();
-    double V3_ring = sys.getNode(3).V_mag();
-    
-    printPowerFlowResults(sys, "Reconfig.RingBefore");
-    
-    // Размыкаем кольцо
-    sys.disconnectLine(3);
-    
-    std::cout << "\n=== Считаем радиальную сеть ===" << std::endl;
-    
-    Solver solver2(sys);
-    auto result2 = solver2.solve();
-    
-    std::cout << "Converged: " << result2.converged << std::endl;
-    std::cout << "Iterations: " << result2.iterations << std::endl;
-    std::cout << "Max mismatch: " << result2.max_mismatch << std::endl;
-    
-    EXPECT_TRUE(result2.converged);
-    
-    double V2_radial = sys.getNode(2).V_mag();
-    double V3_radial = sys.getNode(3).V_mag();
-    
-    printPowerFlowResults(sys, "Reconfig.RingAfter");
-    
-    // Физические проверки
-    EXPECT_LT(V2_radial, V2_ring);
-    EXPECT_LT(V3_radial, V3_ring);
-    EXPECT_LT(V3_radial, V2_radial);
+	PowerSystem sys(100e6, 110e3);
+	sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+	sys.addNode(Node::makePQ(2, 20e6, 7.5e6, 110e3, 0.0, 110e3));  // Было 40/15
+	sys.addNode(Node::makePQ(3, 15e6, 5e6, 110e3, 0.0, 110e3));   // Было 30/10
+	
+	sys.addLine(Line(1, 1, 2, 10.0, 50.0));
+	sys.addLine(Line(2, 2, 3, 8.0, 40.0));
+	sys.addLine(Line(3, 3, 1, 12.0, 60.0));
+	
+	std::cout << "\n=== Считаем кольцевую сеть ===" << std::endl;
+	
+	Solver solver1(sys);
+	auto result1 = solver1.solve();
+	
+	std::cout << "Converged: " << result1.converged << std::endl;
+	std::cout << "Iterations: " << result1.iterations << std::endl;
+	std::cout << "Max mismatch: " << result1.max_mismatch << std::endl;
+	
+	EXPECT_TRUE(result1.converged);
+	
+	double V2_ring = sys.getNode(2).V_mag();
+	double V3_ring = sys.getNode(3).V_mag();
+	
+	printPowerFlowResults(sys, "Reconfig.RingBefore");
+	
+	// Размыкаем кольцо
+	sys.disconnectLine(3);
+	
+	std::cout << "\n=== Считаем радиальную сеть ===" << std::endl;
+	
+	Solver solver2(sys);
+	auto result2 = solver2.solve();
+	
+	std::cout << "Converged: " << result2.converged << std::endl;
+	std::cout << "Iterations: " << result2.iterations << std::endl;
+	std::cout << "Max mismatch: " << result2.max_mismatch << std::endl;
+	
+	EXPECT_TRUE(result2.converged);
+	
+	double V2_radial = sys.getNode(2).V_mag();
+	double V3_radial = sys.getNode(3).V_mag();
+	
+	printPowerFlowResults(sys, "Reconfig.RingAfter");
+	
+	// Физические проверки
+	EXPECT_LT(V2_radial, V2_ring);
+	EXPECT_LT(V3_radial, V3_ring);
+	EXPECT_LT(V3_radial, V2_radial);
 }
 
 // ==================== PV Limits ====================
 
 TEST(PVLimits, PVWithoutLimits) {
-    // PV-узел с широкими пределами Q (дефолтные -1e9, 1e9)
-    PowerSystem sys(100e6, 110e3);
-    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
-    // Параметры: id, P_spec, V_set, V_init, delta, V_nom, Q_min, Q_max
-    sys.addNode(Node::makePV(2, 50e6, 108e3, 108e3, 0.0, 110e3));  // Q_min и Q_max дефолтные
-    
-    sys.addLine(Line(1, 1, 2, 2.42, 12.1));
-    
-    Solver solver(sys);
-    auto result = solver.solve();
-    
-    EXPECT_TRUE(result.converged);
-    
-    // Узел должен остаться PV
-    EXPECT_EQ(sys.getNode(2).type(), NodeType::PV);
-    
-    printPowerFlowResults(sys, "PVLimits.PVWithoutLimits");
+	// PV-узел с широкими пределами Q (дефолтные -1e9, 1e9)
+	PowerSystem sys(100e6, 110e3);
+	sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+	// Параметры: id, P_spec, V_set, V_init, delta, V_nom, Q_min, Q_max
+	sys.addNode(Node::makePV(2, 50e6, 108e3, 108e3, 0.0, 110e3));  // Q_min и Q_max дефолтные
+	
+	sys.addLine(Line(1, 1, 2, 2.42, 12.1));
+	
+	Solver solver(sys);
+	auto result = solver.solve();
+	
+	EXPECT_TRUE(result.converged);
+	
+	// Узел должен остаться PV
+	EXPECT_EQ(sys.getNode(2).type(), NodeType::PV);
+	
+	printPowerFlowResults(sys, "PVLimits.PVWithoutLimits");
 }
 
 TEST(PVLimits, PVReachesQmax) {
-    // PV-узел достигает Q_max
-    PowerSystem sys(100e6, 110e3);
-    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
-    // Параметры: id, P_spec, V_set, V_init, delta, V_nom, Q_min, Q_max
-    sys.addNode(Node::makePV(2, 50e6, 108e3, 108e3, 0.0, 110e3, -10e6, 10e6));  // Q_max = 10 Мвар
-    sys.addNode(Node::makePQ(3, 30e6, 20e6, 110e3, 0.0, 110e3));  // Большая нагрузка
-    
-    sys.addLine(Line(1, 1, 2, 5.0, 25.0));
-    sys.addLine(Line(2, 2, 3, 4.0, 20.0));
-    
-    Solver solver(sys);
-    auto result = solver.solve();
-    
-    EXPECT_TRUE(result.converged);
-    
-    // Узел 2 должен преобразоваться в PQ с Q = Q_max
-    EXPECT_EQ(sys.getNode(2).type(), NodeType::PQ);
-    EXPECT_NEAR(sys.getNode(2).Q_spec(), 10e6, 1e3);
-    
-    printPowerFlowResults(sys, "PVLimits.PVReachesQmax");
+	// PV-узел достигает Q_max
+	PowerSystem sys(100e6, 110e3);
+	sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+	// Параметры: id, P_spec, V_set, V_init, delta, V_nom, Q_min, Q_max
+	sys.addNode(Node::makePV(2, 50e6, 108e3, 108e3, 0.0, 110e3, -10e6, 10e6));  // Q_max = 10 Мвар
+	sys.addNode(Node::makePQ(3, 30e6, 20e6, 110e3, 0.0, 110e3));  // Большая нагрузка
+	
+	sys.addLine(Line(1, 1, 2, 5.0, 25.0));
+	sys.addLine(Line(2, 2, 3, 4.0, 20.0));
+	
+	Solver solver(sys);
+	auto result = solver.solve();
+	
+	EXPECT_TRUE(result.converged);
+	
+	// Узел 2 должен преобразоваться в PQ с Q = Q_max
+	EXPECT_EQ(sys.getNode(2).type(), NodeType::PQ);
+	EXPECT_NEAR(sys.getNode(2).Q_spec(), 10e6, 1e3);
+	
+	printPowerFlowResults(sys, "PVLimits.PVReachesQmax");
 }
 
 TEST(PVLimits, PVReachesQmin) {
-    // PV-узел достигает Q_min
-    PowerSystem sys(100e6, 110e3);
-    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
-    // Параметры: id, P_spec, V_set, V_init, delta, V_nom, Q_min, Q_max
-    sys.addNode(Node::makePV(2, 50e6, 108e3, 108e3, 0.0, 110e3, -5e6, 50e6));  // Q_min = -5 Мвар
-    sys.addNode(Node::makePQ(3, 10e6, -15e6, 110e3, 0.0, 110e3));  // Ёмкостная нагрузка
-    
-    sys.addLine(Line(1, 1, 2, 5.0, 25.0));
-    sys.addLine(Line(2, 2, 3, 4.0, 20.0));
-    
-    Solver solver(sys);
-    auto result = solver.solve();
-    
-    EXPECT_TRUE(result.converged);
-    
-    // Узел 2 должен преобразоваться в PQ с Q = Q_min
-    EXPECT_EQ(sys.getNode(2).type(), NodeType::PQ);
-    EXPECT_NEAR(sys.getNode(2).Q_spec(), -5e6, 1e3);
-    
-    printPowerFlowResults(sys, "PVLimits.PVReachesQmin");
+	// PV-узел достигает Q_min
+	PowerSystem sys(100e6, 110e3);
+	sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+	// Параметры: id, P_spec, V_set, V_init, delta, V_nom, Q_min, Q_max
+	sys.addNode(Node::makePV(2, 50e6, 108e3, 108e3, 0.0, 110e3, -5e6, 50e6));  // Q_min = -5 Мвар
+	sys.addNode(Node::makePQ(3, 10e6, -15e6, 110e3, 0.0, 110e3));  // Ёмкостная нагрузка
+	
+	sys.addLine(Line(1, 1, 2, 5.0, 25.0));
+	sys.addLine(Line(2, 2, 3, 4.0, 20.0));
+	
+	Solver solver(sys);
+	auto result = solver.solve();
+	
+	EXPECT_TRUE(result.converged);
+	
+	// Узел 2 должен преобразоваться в PQ с Q = Q_min
+	EXPECT_EQ(sys.getNode(2).type(), NodeType::PQ);
+	EXPECT_NEAR(sys.getNode(2).Q_spec(), -5e6, 1e3);
+	
+	printPowerFlowResults(sys, "PVLimits.PVReachesQmin");
 }
 
 TEST(PVLimits, CascadingConversion) {
-    // Каскадное преобразование двух PV-узлов
-    PowerSystem sys(100e6, 110e3);
-    sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
-    // Параметры: id, P_spec, V_set, V_init, delta, V_nom, Q_min, Q_max
-    sys.addNode(Node::makePV(2, 30e6, 108e3, 108e3, 0.0, 110e3, -5e6, 5e6));
-    sys.addNode(Node::makePV(3, 30e6, 108e3, 108e3, 0.0, 110e3, -5e6, 5e6));
-    sys.addNode(Node::makePQ(4, 50e6, 30e6, 110e3, 0.0, 110e3));
-    
-    sys.addLine(Line(1, 1, 2, 5.0, 25.0));
-    sys.addLine(Line(2, 2, 3, 4.0, 20.0));
-    sys.addLine(Line(3, 3, 4, 3.0, 15.0));
-    
-    Solver solver(sys);
-    auto result = solver.solve();
-    
-    EXPECT_TRUE(result.converged);
-    
-    // Оба PV должны преобразоваться в PQ
-    EXPECT_EQ(sys.getNode(2).type(), NodeType::PQ);
-    EXPECT_EQ(sys.getNode(3).type(), NodeType::PQ);
-    
-    printPowerFlowResults(sys, "PVLimits.CascadingConversion");
+	// Каскадное преобразование двух PV-узлов
+	PowerSystem sys(100e6, 110e3);
+	sys.addNode(Node::makeSlack(1, 110e3, 0.0, 110e3));
+	// Параметры: id, P_spec, V_set, V_init, delta, V_nom, Q_min, Q_max
+	sys.addNode(Node::makePV(2, 30e6, 108e3, 108e3, 0.0, 110e3, -5e6, 5e6));
+	sys.addNode(Node::makePV(3, 30e6, 108e3, 108e3, 0.0, 110e3, -5e6, 5e6));
+	sys.addNode(Node::makePQ(4, 50e6, 30e6, 110e3, 0.0, 110e3));
+	
+	sys.addLine(Line(1, 1, 2, 5.0, 25.0));
+	sys.addLine(Line(2, 2, 3, 4.0, 20.0));
+	sys.addLine(Line(3, 3, 4, 3.0, 15.0));
+	
+	Solver solver(sys);
+	auto result = solver.solve();
+	
+	EXPECT_TRUE(result.converged);
+	
+	// Оба PV должны преобразоваться в PQ
+	EXPECT_EQ(sys.getNode(2).type(), NodeType::PQ);
+	EXPECT_EQ(sys.getNode(3).type(), NodeType::PQ);
+	
+	printPowerFlowResults(sys, "PVLimits.CascadingConversion");
 }
