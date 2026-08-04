@@ -260,7 +260,7 @@ TEST(Solver, NoConvergence) {
   sys.addNode(Node::makePQ(2, 500e6, 200e6, 110e3, 0.0)); // Огромная нагрузка
   sys.addLine(Line(1, 1, 2, 100.0, 500.0)); // Огромное сопротивление
 
-  Solver::Options opts;
+  Options opts;
   opts.max_iterations = 5;
   opts.tolerance = 1e-10;
 

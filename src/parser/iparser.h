@@ -13,13 +13,9 @@ public:
 	virtual ~IParser() = default;
 
 	// Парсинг двух файлов (узлы и ветви)
-	virtual bool parseFiles(const QString& nodes_filepath, const QString& branches_filepath) = 0;
-	
-	// Получить собранную систему
-	virtual PowerSystem& getSystem() = 0;
-	
-	// Очистить текущую систему
-	virtual void clear() = 0;
+	virtual bool parseFiles(const QString& nodes_filepath, 
+                            const QString& branches_filepath,
+                            PowerSystem& system) = 0;
 
 signals:
 	void started();
