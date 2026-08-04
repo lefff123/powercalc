@@ -41,6 +41,15 @@ public:
 	bool isEnabled() const { return enabled_; }
 	bool istransformer () const { return is_transformer_; }
 
+	// Сеттеры
+	void setR(double R) { R_ = R; }
+	void setX(double X) { X_ = X; }
+	void setY(const std::complex<double> &Y) { Y_ = Y; }
+	void setKt(const std::complex<double> &k) { k_t_ = k; }
+	void setFrom(NodeId f) { from_ = f; }
+	void setTo(NodeId t) { to_ = t; }
+	void setTransformer(bool t) { is_transformer_ = t; }
+
 private:
 	LineId id_;
 	NodeId from_;

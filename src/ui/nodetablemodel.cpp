@@ -6,13 +6,22 @@ NodeTableModel::NodeTableModel(PowerSystem &system, QObject *parent)
 int NodeTableModel::rowCount(const QModelIndex &parent) const
 {
 	if (parent.isValid()) return 0;
-	return m_system.nodesCount();
+	return m_system.nodesCount() + 1;
 }
 
 QVariant NodeTableModel::data(const QModelIndex &index, int role) const
 {
-	if (!index.isValid() || index.row() >= m_system.nodesCount())
+	if (!index.isValid() || index.row() > m_system.nodesCount())
 		return {};
+
+	// добавление пустой строки
+	if (index.row() == m_system.nodesCount()) {
+		if (role == Qt::CheckStateRole && index.column() == ColEnabled)
+			return static_cast<int>(Qt::Checked);
+		if ((role == Qt::DisplayRole || role == Qt::EditRole) && index.column() == ColType)
+			return QStringLiteral("PQ");
+		return {};
+	}
 
 	const auto &nodes = m_system.getNodes();
 	const Node &n = nodes[index.row()];
@@ -55,9 +64,15 @@ QVariant NodeTableModel::data(const QModelIndex &index, int role) const
 
 bool NodeTableModel::setData(const QModelIndex &index, const QVariant &value, int role)
 {
-	if (!index.isValid() || index.row() >= m_system.nodesCount())
-		return false;
+	if (!index.isValid() || index.row() > m_system.nodesCount())
+   		return false;
 
+	if (index.row() == m_system.nodesCount()) {
+		const int last = m_system.nodesCount();
+		beginInsertRows({}, last + 1, last + 1);
+		m_system.addNode(Node::makePQ(nextFreeId(), 0.0, 0.0, 110e3));
+		endInsertRows();
+	}
 	const auto &nodes = m_system.getNodes();
 	Node &n = m_system.getNode(nodes[index.row()].id());
 	const int col = index.column();
@@ -129,8 +144,7 @@ bool NodeTableModel::setData(const QModelIndex &index, const QVariant &value, in
 void NodeTableModel::addNode(const Node &node)
 {
 	m_system.addNode(node);
-	beginInsertRows({}, m_system.nodesCount() - 1, m_system.nodesCount() - 1);
-	endInsertRows();
+	refresh();
 }
 
 void NodeTableModel::removeNode(int row)
@@ -190,4 +204,12 @@ QVariant NodeTableModel::headerData(int section, Qt::Orientation orientation, in
         }
     }
     return {};
+}
+
+NodeId NodeTableModel::nextFreeId() const
+{
+	NodeId maxId = 0;
+	for (const Node &n : m_system.getNodes())
+		maxId = std::max(maxId, n.id());
+	return m_system.nodesCount() ? maxId + 1 : 1;
 }

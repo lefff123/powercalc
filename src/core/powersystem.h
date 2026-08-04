@@ -101,6 +101,8 @@ public:
 	// Включение линии с инвалидацией кэша
 	void connectLine(LineId id);
 
+	void clear();
+
 private:
 	std::vector<Node> nodes_;
 	std::vector<Line> lines_;

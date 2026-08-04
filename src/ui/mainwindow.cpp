@@ -1,6 +1,9 @@
 #include "mainwindow.h"
 #include "powersystem.h"
 #include "nodetablemodel.h"
+#include "linetablemodel.h"
+#include "tabledelegate.h"
+#include "csvparser.h"
 
 #include <QLabel>
 #include <QMenu>
@@ -9,6 +12,8 @@
 #include <QTabWidget>
 #include <QToolBar>
 #include <QVBoxLayout>
+#include <QFileDialog>
+#include <QMessageBox>
 
 MainWindow::MainWindow(PowerSystem &system, QWidget *parent) : QMainWindow(parent), m_system(system)
 {
@@ -45,9 +50,17 @@ void MainWindow::createTabs()
 	m_nodeModel = new NodeTableModel(m_system, this);
 	m_nodeTable = new QTableView(this);
 	m_nodeTable->setModel(m_nodeModel);
+	m_nodeTable->hideColumn(NodeTableModel::ColId);
+	m_nodeTable->setItemDelegate(new TableDelegate(NodeTableModel::ColType, NodeTableModel::ColEnabled, {"PQ", "PV", "SLACK"}, this));
 	m_tableTabs->addTab(m_nodeTable, "Узлы");
 
-	m_tableTabs->addTab(new QLabel("Таблица ветвей"), "Ветви");
+	m_lineModel = new LineTableModel(m_system, this);
+	m_lineModel->setNodeModel(m_nodeModel); 
+	m_lineTable = new QTableView(this);
+	m_lineTable->setModel(m_lineModel);
+	m_lineTable->hideColumn(LineTableModel::ColId);
+	m_lineTable->setItemDelegate(new TableDelegate(LineTableModel::ColType, LineTableModel::ColEnabled, {"ЛЭП", "Трансформатор"}, this));
+	m_tableTabs->addTab(m_lineTable, "Ветви");
 	m_mainTabs->addTab(m_tableTabs, "Таблицы");
 
 	m_mainTabs->addTab(new QLabel("Графика — позже на QML"), "Графика");
@@ -67,7 +80,10 @@ void MainWindow::createMenusAndToolbars()
 	m_fileMenu->addAction("Сохранить проект");
 	m_fileMenu->addAction("Сохранить проект как...");
 	m_fileMenu->addSeparator();
-	m_fileMenu->addAction("Импорт из RastrWin...");
+
+	QAction *importAction = m_fileMenu->addAction("Импорт из RastrWin...");
+	connect(importAction, &QAction::triggered, this, &MainWindow::onImportRastrWin);
+
 	m_fileMenu->addAction("Экспорт в RastrWin...");
 	m_fileMenu->addSeparator();
 	m_fileMenu->addAction("Выход", this, &QWidget::close);
@@ -107,4 +123,42 @@ void MainWindow::applyTabContext(int index)
 	m_tablesEditMenu->menuAction()->setVisible(isTables);
 	m_calcMenu->menuAction()->setVisible(isTables);
 	m_graphViewMenu->menuAction()->setVisible(isGraph);
+}
+
+void MainWindow::onImportRastrWin()
+{
+	QString nodesFile = QFileDialog::getOpenFileName(this, "Выберите nodes.csv", "", "CSV Files (*.csv)");
+	if (nodesFile.isEmpty()) return;
+	
+	QString branchesFile = QFileDialog::getOpenFileName(this, "Выберите branches.csv", "", "CSV Files (*.csv)");
+	if (branchesFile.isEmpty()) return;
+	
+	m_system.clear();
+	
+	CsvParser parser;
+	if (!parser.parseFiles(nodesFile, branchesFile, m_system)) {
+		QMessageBox::warning(this, "Ошибка импорта", "Не удалось прочитать файлы");
+		return;
+	}
+	
+	// Заполняем имена узлов
+	const QStringList &nodeNames = parser.nodeNames();
+	QMap<NodeId, QString> nodeNameMap;
+	for (int i = 0; i < nodeNames.size() && i <= m_system.nodesCount(); ++i) {
+		nodeNameMap[m_system.getNodes()[i].id()] = nodeNames[i];
+	}
+	m_nodeModel->setNames(nodeNameMap);
+	
+	// Заполняем имена линий
+	const QStringList &lineNames = parser.lineNames();
+	QMap<LineId, QString> lineNameMap;
+	for (int i = 0; i < lineNames.size() && i < m_system.linesCount(); ++i) {
+		lineNameMap[m_system.getLines()[i].id()] = lineNames[i];
+	}
+	m_lineModel->setNames(lineNameMap);
+	
+	statusBar()->showMessage(
+		QString("Импортировано: %1 узлов, %2 линий")
+			.arg(m_system.nodesCount())
+			.arg(m_system.linesCount()));
 }

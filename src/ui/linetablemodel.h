@@ -4,7 +4,9 @@
 #include <QMap>
 #include "powersystem.h"
 
-class NodeTableModel : public QAbstractTableModel
+class NodeTableModel;
+
+class LineTableModel : public QAbstractTableModel
 {
 	Q_OBJECT
 
@@ -14,19 +16,18 @@ public:
 		ColEnabled,
 		ColId,
 		ColName,
-		ColP,
-		ColQ,
-		ColVset,
-		ColVmag,
-		ColDelta,
-		ColQmin,
-		ColQmax,
+		ColFrom,
+		ColTo,
+		ColR,
+		ColX,
+		ColG,
+		ColB,
+		ColKt,
 		ColCount
 	};
 
-	explicit NodeTableModel(PowerSystem &system, QObject *parent = nullptr);
+	explicit LineTableModel(PowerSystem &system, QObject *parent = nullptr);
 
-	// QAbstractTableModel contract
 	int rowCount(const QModelIndex &parent = QModelIndex()) const override;
 	int columnCount(const QModelIndex &parent = QModelIndex()) const override;
 	QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
@@ -34,23 +35,15 @@ public:
 	Qt::ItemFlags flags(const QModelIndex &index) const override;
 	QVariant headerData(int section, Qt::Orientation orientation, int role = Qt::DisplayRole) const override;
 
-	// API
-	void addNode(const Node &node);
+	void addLine(const Line &line);
 	void setNames(const QMap<NodeId, QString> &names) { m_names = names; refresh(); }
-	void removeNode(int row);
-	void refresh();  // Перечитать из PowerSystem
-	bool hasNode(NodeId id) const {
-		for (const Node &n : m_system.getNodes())
-			if (n.id() == id) return true;
-		return false;
-	}
-	QString nodeName(NodeId id) const {
-		return m_names.value(id, QString::number(id));
-	}
+	void setNodeModel(NodeTableModel *model) { m_nodeModel = model; }
+	void refresh();
 
 private:
 	PowerSystem &m_system;
-	QMap<NodeId, QString> m_names;
+	QMap<LineId, QString> m_names;
+	NodeTableModel *m_nodeModel = nullptr;
 
-	NodeId nextFreeId() const;
+	LineId nextFreeId() const;
 };

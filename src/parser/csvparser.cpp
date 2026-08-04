@@ -32,8 +32,6 @@ double degToRad(double deg) {
 }
 
 CsvParser::CsvParser(QObject* parent){
-	names_nodes_ = {"tip", "ny", "uhom", "pn", "qn", "pg", "qg", "qmin", "qmax", "delta", "vzd"};
-	names_lines_ = {"tip", "ip", "iq", "r", "x", "g", "b", "ktr", "np"};
 }
 
 bool CsvParser::parseFiles(const QString& nodes_filepath, 
@@ -67,6 +65,7 @@ bool CsvParser::parseNodes(const QString& filepath, PowerSystem& system){
 	if (headers_.empty())
 		return false;
 
+	names_nodes_.clear();
 	// Множители для перевода МВт/Мвар -> Вт/Вар
 	const double P_MULT = 1e6;
 	const double Q_MULT = 1e6;
@@ -85,7 +84,7 @@ bool CsvParser::parseNodes(const QString& filepath, PowerSystem& system){
 		double uhom_V = uhom_kV * V_MULT;
 		double delta_deg = parseDouble(row[headers_["delta"]]);
 		double delta_rad = degToRad(delta_deg);
-		
+		const QString name = row[headers_["name"]].trimmed();
 		switch (tip){
 			case 0: { // SLACK
 				double vzd_kV = parseDouble(row[headers_["vzd"]], uhom_kV);
@@ -121,6 +120,7 @@ bool CsvParser::parseNodes(const QString& filepath, PowerSystem& system){
 				system.addNode(node);
 				break;
 			}
+			names_nodes_.append(name);
 		}
 	}
 	return true;
@@ -152,7 +152,7 @@ bool CsvParser::parseBranches(const QString& filepath, PowerSystem& system){
 	headers_ = parseHeaders(in.readLine());
 	if (headers_.empty())
 		return false;
-
+	names_lines_.clear();
 	LineId line_counter = 1;
 	
 	while(!in.atEnd()){
@@ -179,9 +179,10 @@ bool CsvParser::parseBranches(const QString& filepath, PowerSystem& system){
 		
 		// Уникальный ID для каждой ветви
 		LineId branch_id = line_counter++;
-		
+		const QString name = row[headers_["name"]].trimmed();
 		Line branch{branch_id, ip, iq, r, x, ktr, std::complex<double>(g, b), is_transformer};
 		system.addLine(branch);
+		names_lines_.append(name);
 	}
 	return true;
 }

@@ -8,6 +8,7 @@ class QMenu;
 class QToolBar;
 class PowerSystem;
 class NodeTableModel;
+class LineTableModel;
 
 class MainWindow : public QMainWindow
 {
@@ -36,5 +37,11 @@ private:
 	QTableView *m_nodeTable = nullptr;
 	NodeTableModel *m_nodeModel = nullptr;
 
+	QTableView *m_lineTable = nullptr;
+	LineTableModel *m_lineModel = nullptr;
+
 	PowerSystem &m_system;
+
+private slots:
+	void onImportRastrWin();
 };

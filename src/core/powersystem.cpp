@@ -386,3 +386,9 @@ void PowerSystem::recalculateBaseVoltages() const{
 	base_voltages_valid_ = true;
 }
 
+void PowerSystem::clear() {
+	nodes_.clear();
+	lines_.clear();
+	id_to_index_.clear();
+	base_voltages_valid_ = false;
+}
