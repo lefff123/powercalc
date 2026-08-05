@@ -103,6 +103,9 @@ public:
 
 	void clear();
 
+	void removeNode(NodeId id);
+	void removeLine(LineId id);
+
 private:
 	std::vector<Node> nodes_;
 	std::vector<Line> lines_;

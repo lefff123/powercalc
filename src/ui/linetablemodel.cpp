@@ -285,3 +285,12 @@ void LineTableModel::clearFlows()
 	m_flows.clear();
 	refresh();
 }
+
+void LineTableModel::removeLine(int row)
+{
+	if (row < 0 || row >= static_cast<int>(m_system.linesCount())) return;
+	const LineId id = m_system.getLines()[row].id();
+	m_system.removeLine(id);
+	m_names.remove(id);
+	refresh();
+}

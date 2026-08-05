@@ -176,11 +176,11 @@ void NodeTableModel::addNode(const Node &node)
 
 void NodeTableModel::removeNode(int row)
 {
-	if (row < 0 || row >= m_system.nodesCount()) return;
-	// PowerSystem не имеет removeNode — пока не реализуем
-	// Просто обновим представление
-	beginResetModel();
-	endResetModel();
+	if (row < 0 || row >= static_cast<int>(m_system.nodesCount())) return;
+	const NodeId id = m_system.getNodes()[row].id();
+	m_system.removeNode(id);  // может кинуть — ловит слот
+	m_names.remove(id);
+	refresh();
 }
 
 void NodeTableModel::refresh()

@@ -55,4 +55,8 @@ private slots:
 	void onOpenProject();
 	void onCopySelection();
 	void onPasteSelection();
+	void onAddLine();
+	void onAddNode();
+	void onDeleteLine();
+	void onDeleteNode();
 };

@@ -188,31 +188,35 @@ Matrix<std::complex<double>> PowerSystem::buildYBus() const
 {
 	Matrix<std::complex<double>> Y_bus(nodes_.size(), nodes_.size());
 	recalculateBaseVoltages();
-	// заполняем проводимостями
+	
+	// заполняем проводимостями линий
 	for (const auto &line : lines_) {
 		if (!line.isEnabled()) continue;
 		auto idx_from = getNodeIndex(line.from());
 		auto idx_to = getNodeIndex(line.to());
 		if (!nodes_[idx_from].isEnabled() || !nodes_[idx_to].isEnabled()) continue;
-		// Эффективный коэффициент трансформации в о.е.
+		
 		std::complex<double> k_pu = line.k_t() * V_base_per_node_[idx_to] /
 									V_base_per_node_[idx_from];
 		std::complex<double> k_pu_conj = std::conj(k_pu);
-		double k_pu_abs_sq = std::norm(k_pu); // |k_pu|²
+		double k_pu_abs_sq = std::norm(k_pu);
 		std::complex<double> y = Y_oe(line);
 
-		// диагональные элементы матрицы
-		Y_bus(idx_from, idx_from) += y / k_pu_abs_sq; // Y_ii = y / |k_pu|²
-		Y_bus(idx_to, idx_to) += y;                   // Y_jj = y
-
-		// недиагональные элементы
-		Y_bus(idx_from, idx_to) -= y / k_pu_conj; // Y_ij = -y / k_pu*
-		Y_bus(idx_to, idx_from) -= y / k_pu;      // Y_ji = -y / k_pu
-
-		//шунтовые проводимости
-		Y_bus(idx_from, idx_from) += Y_shunt_from_oe(line); // Y_ii = y / |k_pu|²
-		Y_bus(idx_to, idx_to) += Y_shunt_to_oe(line);     // Y_jj = y
+		Y_bus(idx_from, idx_from) += y / k_pu_abs_sq;
+		Y_bus(idx_to, idx_to) += y;
+		Y_bus(idx_from, idx_to) -= y / k_pu_conj;
+		Y_bus(idx_to, idx_from) -= y / k_pu;
+		Y_bus(idx_from, idx_from) += Y_shunt_from_oe(line);
+		Y_bus(idx_to, idx_to) += Y_shunt_to_oe(line);
 	}
+	
+	// шунты узлов (параллельные проводимости к земле)
+	for (size_t i = 0; i < nodes_.size(); ++i) {
+		if (!nodes_[i].isEnabled()) continue;
+		const double Y_base_i = (V_base_per_node_[i] * V_base_per_node_[i]) / S_base_;
+		Y_bus(i, i) += nodes_[i].Y_shunt() / Y_base_i;  // СИ → о.е.
+	}
+	
 	return Y_bus;
 }
 
@@ -392,5 +396,33 @@ void PowerSystem::clear() {
 	nodes_.clear();
 	lines_.clear();
 	id_to_index_.clear();
+	base_voltages_valid_ = false;
+}
+
+void PowerSystem::removeNode(NodeId id)
+{
+	const size_t idx = getNodeIndex(id);  // throw, если нет
+
+	for (const auto &line : lines_)
+		if (line.from() == id || line.to() == id)
+			throw std::invalid_argument(
+				"Node " + std::to_string(id) + " has connected lines; remove them first");
+
+	nodes_.erase(nodes_.begin() + idx);
+
+	id_to_index_.clear();
+	for (size_t i = 0; i < nodes_.size(); ++i)
+		id_to_index_[nodes_[i].id()] = i;
+
+	base_voltages_valid_ = false;
+}
+
+void PowerSystem::removeLine(LineId id)
+{
+	auto idx = findLineIndex(id);
+	if (!idx.has_value())
+		throw std::out_of_range("Line not found: " + std::to_string(id));
+
+	lines_.erase(lines_.begin() + *idx);
 	base_voltages_valid_ = false;
 }

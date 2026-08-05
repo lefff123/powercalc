@@ -11,6 +11,15 @@
 
 namespace fs = std::filesystem;
 
+static std::string writeTempFile(const std::string &content, const std::string &filename)
+{
+	const fs::path path = fs::temp_directory_path() / filename;
+	std::ofstream out(path);
+	out << content;
+	out.close();
+	return path.string();
+}
+
 class CsvParserTest : public ::testing::Test {
 protected:
     std::string nodes_path_;
@@ -251,4 +260,44 @@ TEST_F(CsvParserTest, NonExistentFile) {
     
     bool result = parser.parseFiles("nonexistent.csv", QString::fromStdString(branches_path_), system);
     EXPECT_FALSE(result);
+}
+
+TEST(CsvParser, ParseShuntYsh) {
+	std::string nodes_csv =
+		"sel;sta;tip;ny;name;uhom;pn;qn;pg;qg;vzd;qmin;qmax;bsh;vras;delta;npa;Ysh\n"
+		"0;0;1;1347;Onda-110;110;120.0;113.0;;;;;;200.0;121.03;0.60;0;+J200\n"
+		"0;0;1;1349;Bologoe2;110;49.0;27.0;;;;;;;117.20;1.29;0;100\n"
+		"0;0;1;347;Onda;330;;;;;;;;220.0;328.45;1.21;0;10+J220\n"
+		"0;0;1;392;Tupik;330;490.0;50.0;;;;;;-555.0;323.23;-9.32;0;-J555\n";
+
+	std::string branches_csv =
+		"sel;sta;tip;ip;iq;np;groupid;name;r;x;g;b;ktr;n_anc;bd;pl_ip;ql_ip;na;i_max;i_zag\n";
+
+	std::string np = writeTempFile(nodes_csv, "shunt_test_n.csv");
+	std::string bp = writeTempFile(branches_csv, "shunt_test_b.csv");
+
+	PowerSystem sys(100e6, 110e3);
+	CsvParser parser;
+	ASSERT_TRUE(parser.parseFiles(QString::fromStdString(np), QString::fromStdString(bp), sys));
+
+	EXPECT_EQ(sys.nodesCount(), 4u);
+
+	// Onda-110: Ysh = +J200
+	EXPECT_NEAR(sys.getNode(1347).Y_shunt().real(), 0.0, 1e-9);
+	EXPECT_NEAR(sys.getNode(1347).Y_shunt().imag(), 200e-6, 1e-9);
+
+	// Bologoe2: Ysh = 100
+	EXPECT_NEAR(sys.getNode(1349).Y_shunt().real(), 100e-6, 1e-9);
+	EXPECT_NEAR(sys.getNode(1349).Y_shunt().imag(), 0.0, 1e-9);
+
+	// Onda: Ysh = 10+J220
+	EXPECT_NEAR(sys.getNode(347).Y_shunt().real(), 10e-6, 1e-9);
+	EXPECT_NEAR(sys.getNode(347).Y_shunt().imag(), 220e-6, 1e-9);
+
+	// Tupik: Ysh = -J555
+	EXPECT_NEAR(sys.getNode(392).Y_shunt().real(), 0.0, 1e-9);
+	EXPECT_NEAR(sys.getNode(392).Y_shunt().imag(), -555e-6, 1e-9);
+
+	fs::remove(np);
+	fs::remove(bp);
 }

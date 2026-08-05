@@ -73,6 +73,8 @@ public:
 	void setV_set(double V) { V_set_ = V; }
 	void setQ_min(double Q) { Q_min_ = Q; }
 	void setQ_max(double Q) { Q_max_ = Q; }
+	void setY_shunt(const std::complex<double> &Y) { Y_shunt_ = Y; }
+	std::complex<double> Y_shunt() const { return Y_shunt_; }
 	// для проверки на включенность
 	void disconnect() { enabled_ = false; }
 	void connect() { enabled_ = true; }
@@ -95,6 +97,7 @@ private:
 	double Q_max_;
 	double V_set_;
 	double V_nom_;
+	std::complex<double> Y_shunt_{0.0, 0.0};
 
 	double V_mag_;
 	double delta_;

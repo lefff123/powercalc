@@ -2,7 +2,7 @@
 
 #include <QAbstractTableModel>
 #include <QMap>
-#include "powersystem.h"
+#include "api.h"
 
 class NodeTableModel;
 
@@ -42,6 +42,7 @@ public:
 	QVariant headerData(int section, Qt::Orientation orientation, int role = Qt::DisplayRole) const override;
 
 	void addLine(const Line &line);
+	void removeLine(int row);
 	void setNames(const QMap<NodeId, QString> &names) { m_names = names; refresh(); }
 	void setNodeModel(NodeTableModel *model) { m_nodeModel = model; }
 	void setFlows(const QVector<LineFlows> &flows);

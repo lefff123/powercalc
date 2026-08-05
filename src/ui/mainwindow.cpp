@@ -1,11 +1,8 @@
 #include "mainwindow.h"
-#include "powersystem.h"
 #include "nodetablemodel.h"
 #include "linetablemodel.h"
 #include "tabledelegate.h"
-#include "csvparser.h"
-#include "solver.h"
-#include "csvwriter.h"
+#include "api.h"
 
 #include <QLabel>
 #include <QMenu>
@@ -107,8 +104,10 @@ void MainWindow::createMenusAndToolbars()
 
 	// Таблицы
 	m_tablesEditMenu = menuBar()->addMenu("Правка");
-	m_tablesEditMenu->addAction("Добавить узел");
-	m_tablesEditMenu->addAction("Удалить узел");
+	QAction *addNode = m_tablesEditMenu->addAction("Добавить узел");
+	connect(addNode, &QAction::triggered, this, &MainWindow::onAddNode);
+	QAction *delNode = m_tablesEditMenu->addAction("Удалить узел");
+	connect(delNode, &QAction::triggered, this, &MainWindow::onDeleteNode);
 	m_tablesEditMenu->addSeparator();
 	QAction *copyAction = m_tablesEditMenu->addAction("Копировать");
 	copyAction->setShortcut(QKeySequence::Copy);
@@ -116,8 +115,11 @@ void MainWindow::createMenusAndToolbars()
 	QAction *pasteAction = m_tablesEditMenu->addAction("Вставить");
 	pasteAction->setShortcut(QKeySequence::Paste);
 	connect(pasteAction, &QAction::triggered, this, &MainWindow::onPasteSelection);
-	m_tablesEditMenu->addAction("Добавить ветвь");
-	m_tablesEditMenu->addAction("Удалить ветвь");
+	m_tablesEditMenu->addSeparator();
+	QAction *addLine = m_tablesEditMenu->addAction("Добавить ветвь");
+	connect(addLine, &QAction::triggered, this, &MainWindow::onAddLine);
+	QAction *delLine = m_tablesEditMenu->addAction("Удалить ветвь");
+	connect(delLine, &QAction::triggered, this, &MainWindow::onDeleteLine);
 
 	m_calcMenu = menuBar()->addMenu("Расчёт");
 	QAction *calcAction = m_calcMenu->addAction("Рассчитать");
@@ -441,4 +443,69 @@ void MainWindow::onPasteSelection()
 		}
 	}
 	statusBar()->showMessage(QString("Вставлено ячеек: %1").arg(pasted));
+}
+
+void MainWindow::onDeleteNode()
+{
+	const int row = m_nodeTable->selectionModel()->currentIndex().row();
+	if (row < 0) return;
+	try {
+		m_nodeModel->removeNode(row);
+		statusBar()->showMessage("Узел удалён");
+	} catch (const std::exception &e) {
+		QMessageBox::warning(this, "Удаление", e.what());
+	}
+}
+
+void MainWindow::onDeleteLine()
+{
+	const int row = m_lineTable->selectionModel()->currentIndex().row();
+	if (row < 0) return;
+	try {
+		m_lineModel->removeLine(row);
+		statusBar()->showMessage("Ветвь удалена");
+	} catch (const std::exception &e) {
+		QMessageBox::warning(this, "Удаление", e.what());
+	}
+}
+
+void MainWindow::onAddNode()
+{
+	NodeId maxId = 0;
+	for (const Node &n : m_system.getNodes())
+		maxId = std::max(maxId, n.id());
+	NodeId newId = m_system.nodesCount() ? maxId + 1 : 1;
+	m_nodeModel->addNode(Node::makePQ(newId, 0.0, 0.0, 110e3));
+	
+	// Прокрутить к новой строке
+	const int lastRow = m_nodeModel->rowCount() - 2;  // -2 потому что +1 пустая строка
+	if (lastRow >= 0) {
+		m_nodeTable->selectRow(lastRow);
+		m_nodeTable->scrollTo(m_nodeModel->index(lastRow, 0));
+	}
+	statusBar()->showMessage("Узел добавлен");
+}
+
+void MainWindow::onAddLine()
+{
+	if (m_system.nodesCount() < 2) {
+		QMessageBox::information(this, "Добавление", "Создайте минимум 2 узла");
+		return;
+	}
+	LineId maxId = 0;
+	for (const Line &l : m_system.getLines())
+		maxId = std::max(maxId, l.id());
+	LineId newId = m_system.linesCount() ? maxId + 1 : 1;
+	
+	const NodeId from = m_system.getNodes()[0].id();
+	const NodeId to = m_system.getNodes()[1].id();
+	m_lineModel->addLine(Line(newId, from, to, 0.0, 0.0));
+	
+	// Прокрутить к новой строке
+	const int lastRow = m_lineModel->rowCount() - 2;
+	if (lastRow >= 0) {
+		m_lineTable->selectRow(lastRow);
+		m_lineTable->scrollTo(m_lineModel->index(lastRow, 0));
+	}
+	statusBar()->showMessage("Ветвь добавлена");
 }

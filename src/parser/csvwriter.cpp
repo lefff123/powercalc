@@ -39,6 +39,20 @@ bool RastrWriter::write(const PowerSystem &sys,
 			if (n.P_spec() >= 0) pg = n.P_spec() / 1e6; else pn = -n.P_spec() / 1e6;
 		}
 
+		const double gsh = n.Y_shunt().real() * 1e6;   // real (conductance)
+		const double bsh = n.Y_shunt().imag() * 1e6;   // imag (susceptance)
+
+		QString yshStr;
+		if (gsh != 0.0 || bsh != 0.0) {
+			if (gsh != 0.0)
+				yshStr = QString("%1%2J%3")
+					.arg(num(gsh))
+					.arg(bsh >= 0 ? "+" : "-")
+					.arg(num(std::abs(bsh)));
+			else
+				yshStr = QString("%1J%2").arg(bsh >= 0 ? "+" : "-").arg(num(std::abs(bsh)));
+		}
+
 		QStringList row;
 		row << "0"
 			<< (n.isEnabled() ? "0" : "1")
@@ -50,10 +64,11 @@ bool RastrWriter::write(const PowerSystem &sys,
 			<< (n.type() != NodeType::PQ ? num(n.V_set() / 1e3) : QString())
 			<< (n.type() == NodeType::PV ? num(n.Q_min() / 1e6) : QString())
 			<< (n.type() == NodeType::PV ? num(n.Q_max() / 1e6) : QString())
-			<< QString()                                  // bsh — не храним
+			<< (bsh != 0 ? num(bsh) : QString())           // bsh
 			<< num(n.V_mag() / 1e3)
 			<< num(n.delta() * 180.0 / M_PI)
-			<< "0" << QString();                          // npa, Ysh
+			<< "0"
+			<< yshStr;                                       // Ysh
 		out << row.join(';') << "\n";
 	}
 	nf.close();

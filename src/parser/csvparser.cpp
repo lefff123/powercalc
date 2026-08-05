@@ -11,6 +11,29 @@
 #include <qstringconverter_base.h>
 #include <cmath>
 
+// "+J200", "10+J220", "-J555", "100" → комплекс (мкСм → См)
+static std::complex<double> parseComplexYsh(const QString &str)
+{
+	QString s = str.trimmed().toUpper();
+	s.remove(' ');
+	if (s.isEmpty()) return {0.0, 0.0};
+
+	double real = 0.0, imag = 0.0;
+	const int jPos = s.indexOf('J');
+	if (jPos >= 0) {
+		QString realPart = s.left(jPos);
+		double sign = 1.0;
+		if (realPart.endsWith('-')) { sign = -1.0; realPart.chop(1); }
+		else if (realPart.endsWith('+')) { realPart.chop(1); }
+		imag = sign * s.mid(jPos + 1).toDouble();
+		real = realPart.isEmpty() ? 0.0 : realPart.toDouble();
+	} else {
+		real = s.toDouble();
+	}
+	std::complex<double> result {real * 1e-6, imag * 1e-6};
+	return result;
+}
+
 // Хелпер для безопасного парсинга чисел из CSV
 double parseDouble(const QString& str, double default_val = 0.0) {
 	if (str.trimmed().isEmpty()) return default_val;
@@ -64,7 +87,15 @@ bool CsvParser::parseNodes(const QString& filepath, PowerSystem& system){
 	headers_ = parseHeaders(in.readLine());
 	if (headers_.empty())
 		return false;
-
+		// Валидация: это должен быть файл узлов
+	const QStringList requiredNodeHeaders = {"tip", "ny", "name", "uhom", "vzd"};
+	for (const QString &h : requiredNodeHeaders) {
+		if (headers_.find(h) == headers_.end()) {
+			qWarning() << "Файл" << filepath << "не содержит заголовок" << h 
+					   << "- это не файл узлов (возможно, передан branches.csv)";
+			return false;
+		}
+	}
 	names_nodes_.clear();
 	// Множители для перевода МВт/Мвар -> Вт/Вар
 	const double P_MULT = 1e6;
@@ -91,6 +122,10 @@ bool CsvParser::parseNodes(const QString& filepath, PowerSystem& system){
 				double vzd_kV = parseDouble(row[headers_["vzd"]], uhom_kV);
 				double vzd_V = vzd_kV * V_MULT;
 				Node node = Node::makeSlack(ny, vzd_V, delta_rad, uhom_V);
+				std::complex<double> ysh = parseComplexYsh(row[headers_["Ysh"]]);
+				if (ysh.real() == 0.0 && ysh.imag() == 0.0)
+					ysh = std::complex<double>(0.0, parseDouble(row[headers_["bsh"]]) * 1e-6);
+				node.setY_shunt(ysh);
 				if (disabled) node.disconnect();
 				system.addNode(node);
 				break;
@@ -107,6 +142,10 @@ bool CsvParser::parseNodes(const QString& filepath, PowerSystem& system){
 				//        double V_init_volts, double delta_init, double V_nom, 
 				//        double Q_min, double Q_max)
 				Node node = Node::makePV(ny, pg - pn, vzd_V, vzd_V, delta_rad, uhom_V, qmin, qmax);
+				std::complex<double> ysh = parseComplexYsh(row[headers_["Ysh"]]);
+				if (ysh.real() == 0.0 && ysh.imag() == 0.0)
+					ysh = std::complex<double>(0.0, parseDouble(row[headers_["bsh"]]) * 1e-6);
+				node.setY_shunt(ysh);
 				if (disabled) node.disconnect();
 				system.addNode(node);
 				break;
@@ -120,12 +159,16 @@ bool CsvParser::parseNodes(const QString& filepath, PowerSystem& system){
 				// makePQ(NodeId id, double P_spec, double Q_spec, double V_init, 
 				//        double delta_init = 0.0, double V_nom = 110e3)
 				Node node = Node::makePQ(ny, pn - pg, qn - qg, uhom_V, delta_rad, uhom_V);
+				std::complex<double> ysh = parseComplexYsh(row[headers_["Ysh"]]);
+				if (ysh.real() == 0.0 && ysh.imag() == 0.0)
+					ysh = std::complex<double>(0.0, parseDouble(row[headers_["bsh"]]) * 1e-6);
+				node.setY_shunt(ysh);
 				if (disabled) node.disconnect();
 				system.addNode(node);
 				break;
 			}
-			names_nodes_.append(name);
 		}
+		names_nodes_.append(name);
 	}
 	return true;
 }
@@ -156,6 +199,15 @@ bool CsvParser::parseBranches(const QString& filepath, PowerSystem& system){
 	headers_ = parseHeaders(in.readLine());
 	if (headers_.empty())
 		return false;
+	// Валидация: это должен быть файл ветвей
+	const QStringList requiredBranchHeaders = {"tip", "ip", "iq", "name", "r", "x"};
+	for (const QString &h : requiredBranchHeaders) {
+		if (headers_.find(h) == headers_.end()) {
+			qWarning() << "Файл" << filepath << "не содержит заголовок" << h 
+					   << "- это не файл ветвей (возможно, передан nodes.csv)";
+			return false;
+		}
+	}
 	names_lines_.clear();
 	LineId line_counter = 1;
 	
@@ -189,10 +241,10 @@ bool CsvParser::parseBranches(const QString& filepath, PowerSystem& system){
 		const QString name = row[headers_["name"]].trimmed();
 		Line branch{branch_id, ip, iq, r, x, ktr, std::complex<double>(g, b), is_transformer};
 
+		system.addLine(branch);
 		if (parseSize(row[headers_["sta"]]) != 0)
 			system.disconnectLine(branch_id);
 
-		system.addLine(branch);
 		names_lines_.append(name);
 	}
 	return true;

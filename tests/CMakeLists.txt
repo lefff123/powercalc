@@ -29,6 +29,7 @@ target_link_libraries(matrix_tests PRIVATE
 	parser
     GTest::gtest 
     GTest::gtest_main
+	Qt6::Core
 )
 
 # Интеграция с CTest
