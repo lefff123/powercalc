@@ -2,6 +2,9 @@
 
 #include <QMainWindow>
 #include <QTableView>
+namespace powercalc::ui {
+class DocumentEditor;
+}
 
 class QTabWidget;
 class QMenu;
@@ -44,6 +47,9 @@ private:
 	QTableView *currentTable() const;
 
 	PowerSystem &m_system;
+
+	powercalc::ui::DocumentEditor* m_docEditor = nullptr;
+	QString m_documentLineEndings = "\n"; 
 
 private slots:
 	void onImportRastrWin();

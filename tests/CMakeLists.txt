@@ -22,6 +22,8 @@ add_executable(matrix_tests
     test_network.cpp
 	test_parser.cpp
 	test_parser_solver_integration.cpp
+	test_document_parser.cpp
+	test_expr_evaluator.cpp
 )
 # Линкуем с gtest и нашей библиотекой
 target_link_libraries(matrix_tests PRIVATE 
@@ -30,6 +32,7 @@ target_link_libraries(matrix_tests PRIVATE
     GTest::gtest 
     GTest::gtest_main
 	Qt6::Core
+	document
 )
 
 # Интеграция с CTest

@@ -3,6 +3,7 @@
 #include "linetablemodel.h"
 #include "tabledelegate.h"
 #include "api.h"
+#include "document_editor.h"
 
 #include <QLabel>
 #include <QMenu>
@@ -22,6 +23,8 @@
 #include <QApplication>
 #include <QMimeData>
 
+using powercalc::ui::DocumentEditor;
+
 MainWindow::MainWindow(PowerSystem &system, QWidget *parent) : QMainWindow(parent), m_system(system)
 {
 	resize(1200, 800);
@@ -37,20 +40,16 @@ void MainWindow::createTabs()
 {
 	m_mainTabs = new QTabWidget(this);
 
-	auto *docPage = new QWidget(this);
+	m_docEditor = new DocumentEditor(this);
+	m_mainTabs->addTab(m_docEditor, "Документ");
 
-	m_docToolbar = new QToolBar(docPage);
-	m_docToolbar->setMovable(false);
-	m_docToolbar->addAction("Отменить");
-	m_docToolbar->addAction("Повторить");
-
-	auto *docLayout = new QVBoxLayout(docPage);
-	docLayout->setContentsMargins(0, 0, 0, 0);
-	docLayout->setSpacing(0);
-	docLayout->addWidget(m_docToolbar);
-	docLayout->addWidget(new QLabel("Документ будет в Этапе 2.2"), 1);
-
-	m_mainTabs->addTab(docPage, "Документ");
+	connect(m_docEditor, &DocumentEditor::diagnosticCountChanged, this, [this](int err, int warn) {
+		if (err == 0 && warn == 0) {
+			statusBar()->showMessage("Документ OK");
+		} else {
+			statusBar()->showMessage(QString("Документ: %1 ошибок, %2 предупреждений").arg(err).arg(warn));
+		}
+	});
 
 	m_tableTabs = new QTabWidget(this);
 
@@ -99,8 +98,20 @@ void MainWindow::createMenusAndToolbars()
 
 	// Документ
 	m_docEditMenu = menuBar()->addMenu("Правка");
-	m_docEditMenu->addAction("Отменить");
-	m_docEditMenu->addAction("Повторить");
+	QAction *undoAction = m_docEditMenu->addAction("Отменить");
+	undoAction->setShortcut(QKeySequence::Undo);
+	connect(undoAction, &QAction::triggered, this, [this]() {
+		if (m_docEditor && m_mainTabs->currentIndex() == 0) {
+			m_docEditor->findChild<QTextEdit*>()->undo();
+		}
+	});
+	QAction *redoAction = m_docEditMenu->addAction("Повторить");
+	redoAction->setShortcut(QKeySequence::Redo);
+	connect(redoAction, &QAction::triggered, this, [this]() {
+		if (m_docEditor && m_mainTabs->currentIndex() == 0) {
+			m_docEditor->findChild<QTextEdit*>()->redo();
+		}
+	});
 
 	// Таблицы
 	m_tablesEditMenu = menuBar()->addMenu("Правка");
@@ -282,17 +293,27 @@ void MainWindow::onSaveProject()
 	QTemporaryDir tmp;
 	const QString np = tmp.path() + "/nodes.csv";
 	const QString bp = tmp.path() + "/branches.csv";
+	const QString dp = tmp.path() + "/document.txt";
+	
 	if (!RastrWriter::write(m_system, m_nodeModel->names(), m_lineModel->names(), np, bp)) {
 		QMessageBox::warning(this, "Проект", "Не удалось подготовить данные");
 		return;
 	}
+
+	// Сохраняем document.txt с оригинальными line endings
+	QString docText = m_docEditor->text();
+	docText.replace("\n", m_documentLineEndings);
+	QFile docFile(dp);
+	docFile.open(QIODevice::WriteOnly);
+	docFile.write(docText.toUtf8());
+	docFile.close();
 
 	QuaZip zip(path);
 	if (!zip.open(QuaZip::mdCreate)) {
 		QMessageBox::warning(this, "Проект", "Не удалось создать архив");
 		return;
 	}
-	for (const QString &file : {np, bp}) {
+	for (const QString &file : {np, bp, dp}) {
 		QuaZipFile out(&zip);
 		if (!out.open(QIODevice::WriteOnly, QuaZipNewInfo(QFileInfo(file).fileName(), file))) {
 			zip.close();
@@ -320,7 +341,7 @@ void MainWindow::onOpenProject()
 	}
 
 	QTemporaryDir tmp;
-	QString np, bp;
+	QString np, bp, dp;
 	for (bool more = zip.goToFirstFile(); more; more = zip.goToNextFile()) {
 		const QString name = zip.getCurrentFileName();
 		QuaZipFile in(&zip);
@@ -331,6 +352,7 @@ void MainWindow::onOpenProject()
 		QString target;
 		if (name.endsWith("nodes.csv")) target = np = tmp.path() + "/nodes.csv";
 		else if (name.endsWith("branches.csv")) target = bp = tmp.path() + "/branches.csv";
+		else if (name.endsWith("document.txt")) target = dp = tmp.path() + "/document.txt";
 		else continue;
 
 		QFile out(target);
@@ -351,6 +373,29 @@ void MainWindow::onOpenProject()
 		return;
 	}
 	applyParsedSystem(parser);
+
+	// Загружаем document.txt
+	if (!dp.isEmpty()) {
+		QFile docFile(dp);
+		docFile.open(QIODevice::ReadOnly);
+		QByteArray docData = docFile.readAll();
+		docFile.close();
+
+		// Определяем оригинальные line endings
+		if (docData.contains("\r\n")) {
+			m_documentLineEndings = "\r\n";
+		} else {
+			m_documentLineEndings = "\n";
+		}
+
+		QString docText = QString::fromUtf8(docData);
+		m_docEditor->setText(docText);
+	} else {
+		// document.txt нет — создаём шаблон
+		m_documentLineEndings = "\n";
+		QString templateText = "---\ntitle: Новый документ\nauthor: \ndate: \n---\n\n# Заголовок\n\n$$\nx = 1\n$$\n";
+		m_docEditor->setText(templateText);
+	}
 }
 
 void MainWindow::onCopySelection()
