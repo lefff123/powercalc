@@ -20,7 +20,6 @@ public:
 
 	const QStringList& nodeNames() const { return names_nodes_; }
 	const QStringList& lineNames() const { return names_lines_; }
-	
 private:
 	std::unordered_map<QString, size_t> headers_;
 	QStringList names_nodes_;
