@@ -1,8 +1,13 @@
 #pragma once
 
+#include "powersystem.h"
+#include "numberformat.h"
+
+#include <cmath>
 #include <QAbstractTableModel>
 #include <QMap>
-#include "powersystem.h"
+#include <QColor>
+#include <QMetaType>
 
 class NodeTableModel : public QAbstractTableModel
 {
@@ -24,6 +29,8 @@ public:
 		ColCount
 	};
 
+	QMap<NodeId, double> m_calcQ;  // рассчитанный Q (вар) после расчёта
+	
 	explicit NodeTableModel(PowerSystem &system, QObject *parent = nullptr);
 
 	// QAbstractTableModel contract
@@ -33,6 +40,9 @@ public:
 	bool setData(const QModelIndex &index, const QVariant &value, int role = Qt::EditRole) override;
 	Qt::ItemFlags flags(const QModelIndex &index) const override;
 	QVariant headerData(int section, Qt::Orientation orientation, int role = Qt::DisplayRole) const override;
+	QVariant rawData(const Node &n, int col) const;
+	bool qOutOfLimits(const Node &n) const;
+	void setCalcQ(const QMap<NodeId, double> &calcQ);
 
 	// API
 	void addNode(const Node &node);

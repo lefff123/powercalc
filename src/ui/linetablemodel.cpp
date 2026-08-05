@@ -58,9 +58,33 @@ QVariant LineTableModel::data(const QModelIndex &index, int role) const
 		case ColType: return l.istransformer() ? "Трансформатор" : "ЛЭП";
 		case ColR: return l.R();
 		case ColX: return l.X();
-		case ColG: return l.Y().real();
-		case ColB: return l.Y().imag();
-		case ColKt: return l.istransformer() ? l.k_t().real() : QVariant();
+		case ColG: return l.Y().real() * 1e6;
+		case ColB: return -l.Y().imag() * 1e6;
+		case ColKt: return l.istransformer() ? 1.0 / l.k_t().real() : QVariant();
+		case ColPfrom: {
+			if (!m_flows.contains(l.id())) return QVariant();
+			return m_flows[l.id()].S_from.real() / 1e6;
+		}
+		case ColQfrom: {
+			if (!m_flows.contains(l.id())) return QVariant();
+			return m_flows[l.id()].S_from.imag() / 1e6;
+		}
+		case ColPto: {
+			if (!m_flows.contains(l.id())) return QVariant();
+			return m_flows[l.id()].S_to.real() / 1e6;
+		}
+		case ColQto: {
+			if (!m_flows.contains(l.id())) return QVariant();
+			return m_flows[l.id()].S_to.imag() / 1e6;
+		}
+		case ColPloss: {
+			if (!m_flows.contains(l.id())) return QVariant();
+			return m_flows[l.id()].S_loss.real() / 1e6;
+		}
+		case ColQloss: {
+			if (!m_flows.contains(l.id())) return QVariant();
+			return m_flows[l.id()].S_loss.imag() / 1e6;
+		}
 		}
 	}
 	return {};
@@ -159,19 +183,20 @@ bool LineTableModel::setData(const QModelIndex &index, const QVariant &value, in
 	case ColG: {
 		const double val = value.toDouble(&ok);
 		if (!ok) return false;
-		l.setY({val, l.Y().imag()});
+		l.setY({val * 1e-6, l.Y().imag()});
 		break;
 	}
 	case ColB: {
 		const double val = value.toDouble(&ok);
 		if (!ok) return false;
-		l.setY({l.Y().real(), val});
+		l.setY({l.Y().real(), -val * 1e-6});
 		break;
 	}
 	case ColKt: {
 		const double val = value.toDouble(&ok);
 		if (!ok || val <= 0) return false;
-		l.setKt({val, l.k_t().imag()});
+		l.setKt({1.0 / val, l.k_t().imag()});
+		l.setTransformer(true);
 		break;
 	}
 	default:
@@ -193,13 +218,9 @@ Qt::ItemFlags LineTableModel::flags(const QModelIndex &index) const
 	if (col == ColEnabled)
 		return f | Qt::ItemIsUserCheckable;
 
-	// Kt редактируется только у трансформаторов
-	if (col == ColKt) {
-		if (index.row() < m_system.linesCount() && m_system.getLines()[index.row()].istransformer())
-			return f | Qt::ItemIsEditable;
+	if (col == ColPfrom || col == ColQfrom || col == ColPto || col == ColQto || 
+		col == ColPloss || col == ColQloss)
 		return f;
-	}
-
 	return f | Qt::ItemIsEditable;
 }
 
@@ -216,9 +237,15 @@ QVariant LineTableModel::headerData(int section, Qt::Orientation orientation, in
 		case ColType: return "Тип";
 		case ColR: return "R (Ом)";
 		case ColX: return "X (Ом)";
-		case ColG: return "G (См)";
-		case ColB: return "B (См)";
+		case ColG: return "G (мкСм)";
+		case ColB: return "B (мкСм)";
 		case ColKt: return "Kt";
+		case ColPfrom: return "P_from (МВт)";
+		case ColQfrom: return "Q_from (Мвар)";
+		case ColPto: return "P_to (МВт)";
+		case ColQto: return "Q_to (Мвар)";
+		case ColPloss: return "ΔP (МВт)";
+		case ColQloss: return "ΔQ (Мвар)";
 		}
 	}
 	return {};
@@ -242,4 +269,19 @@ LineId LineTableModel::nextFreeId() const
 	for (const Line &l : m_system.getLines())
 		maxId = std::max(maxId, l.id());
 	return m_system.linesCount() ? maxId + 1 : 1;
+}
+
+void LineTableModel::setFlows(const QVector<LineFlows> &flows)
+{
+	m_flows.clear();
+	for (const LineFlows &fl : flows) {
+		m_flows.insert(fl.line_id, fl);
+	}
+	refresh();
+}
+
+void LineTableModel::clearFlows()
+{
+	m_flows.clear();
+	refresh();
 }

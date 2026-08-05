@@ -152,7 +152,7 @@ TEST_F(CsvParserTest, CheckTransformerLine) {
     EXPECT_EQ(trafo.to(), 1319u);
     EXPECT_DOUBLE_EQ(trafo.R(), 0.22);
     EXPECT_DOUBLE_EQ(trafo.X(), 8.92);
-    EXPECT_DOUBLE_EQ(trafo.k_t().real(), 0.058);
+    EXPECT_DOUBLE_EQ(trafo.k_t().real(), 1.0 / 0.058);
     EXPECT_DOUBLE_EQ(trafo.k_t().imag(), 0.0);
 }
 
@@ -170,7 +170,7 @@ TEST_F(CsvParserTest, CheckRegularLine) {
     EXPECT_DOUBLE_EQ(line.R(), 1.79);
     EXPECT_DOUBLE_EQ(line.X(), 18.24);
     EXPECT_DOUBLE_EQ(line.k_t().real(), 1.0);
-    EXPECT_DOUBLE_EQ(line.Y().imag(), -192.0);
+    EXPECT_DOUBLE_EQ(line.Y().imag(), 192.0e-6);
 }
 
 TEST_F(CsvParserTest, PrintAllNodes) {

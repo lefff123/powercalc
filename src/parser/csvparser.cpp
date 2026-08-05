@@ -170,11 +170,14 @@ bool CsvParser::parseBranches(const QString& filepath, PowerSystem& system){
 		
 		double r = parseDouble(row[headers_["r"]]);
 		double x = parseDouble(row[headers_["x"]]);
-		double g = parseDouble(row[headers_["g"]]);
-		double b = parseDouble(row[headers_["b"]]);
+		double g = parseDouble(row[headers_["g"]]) * 1e-6;
+		double b = -parseDouble(row[headers_["b"]]) * 1e-6;
 		
 		// Для трансформаторов берем ktr, для линий = 1.0
-		double ktr_val = is_transformer ? parseDouble(row[headers_["ktr"]], 1.0) : 1.0;
+		double ktr_raw = is_transformer ? parseDouble(row[headers_["ktr"]], 1.0) : 1.0;
+		if (ktr_raw == 0) ktr_raw = 1.0;
+		// RastrWin хранит V_to/V_from, бэк ждёт V_from/V_to
+		double ktr_val = 1.0 / ktr_raw;
 		std::complex<double> ktr(ktr_val, 0.0);
 		
 		// Уникальный ID для каждой ветви

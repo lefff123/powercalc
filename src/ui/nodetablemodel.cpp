@@ -14,7 +14,6 @@ QVariant NodeTableModel::data(const QModelIndex &index, int role) const
 	if (!index.isValid() || index.row() > m_system.nodesCount())
 		return {};
 
-	// добавление пустой строки
 	if (index.row() == m_system.nodesCount()) {
 		if (role == Qt::CheckStateRole && index.column() == ColEnabled)
 			return static_cast<int>(Qt::Checked);
@@ -23,43 +22,59 @@ QVariant NodeTableModel::data(const QModelIndex &index, int role) const
 		return {};
 	}
 
-	const auto &nodes = m_system.getNodes();
-	const Node &n = nodes[index.row()];
+	const Node &n = m_system.getNodes()[index.row()];
 	const int col = index.column();
 
-	// Checkbox для isEnabled
-	if (role == Qt::CheckStateRole && col == ColEnabled) {
+	if (role == Qt::CheckStateRole && col == ColEnabled)
 		return n.isEnabled() ? Qt::Checked : Qt::Unchecked;
+
+	if (qOutOfLimits(n) && col == ColQ) {
+		if (role == Qt::BackgroundRole)
+			return QColor(255, 192, 203);
+		if (role == Qt::ForegroundRole)
+			return QColor(Qt::black);
 	}
 
 	if (role == Qt::DisplayRole || role == Qt::EditRole) {
-		switch (col) {
-		case ColId: return static_cast<qlonglong>(n.id());
-		case ColName: return m_names.value(n.id(), QString("Узел %1").arg(n.id()));
-		case ColType:
-			switch (n.type()) {
-			case NodeType::PQ: return "PQ";
-			case NodeType::PV: return "PV";
-			case NodeType::SLACK: return "SLACK";
-			}
-			break;
-		case ColP: return n.P_spec();
-		case ColQ: return n.Q_spec();
-		case ColVset: return n.V_set();
-		case ColVmag: {
-			double v = n.V_mag();
-			return (v > 0) ? v : QVariant();  // пустая ячейка, если не рассчитано
-		}
-		case ColDelta: {
-			double d = n.delta();
-			return (d != 0) ? d : QVariant();
-		}
-		case ColQmin: return n.Q_min();
-		case ColQmax: return n.Q_max();
-		case ColEnabled: return {};  // checkbox рисуется отдельно
-		}
+		const QVariant raw = rawData(n, col);
+		if (role == Qt::DisplayRole && raw.metaType().id() == QMetaType::Double)
+			return formatDouble(raw.toDouble());
+		return raw;
 	}
 	return {};
+}
+
+QVariant NodeTableModel::rawData(const Node &n, int col) const
+{
+	switch (col) {
+	case ColId: return static_cast<qlonglong>(n.id());
+	case ColName: return m_names.value(n.id(), QString("Узел %1").arg(n.id()));
+	case ColType:
+		switch (n.type()) {
+		case NodeType::PQ: return "PQ";
+		case NodeType::PV: return "PV";
+		case NodeType::SLACK: return "SLACK";
+		}
+		break;
+	case ColP: return n.P_spec() / 1e6;
+	case ColQ: return n.Q_spec() / 1e6;
+	case ColVset: return n.V_set() / 1e3;
+	case ColVmag: {
+		const double v = n.V_mag();
+		return (v > 0) ? v / 1e3 : QVariant();
+	}
+	case ColDelta: return n.delta() * 180.0 / M_PI;
+	case ColQmin: return n.Q_min() / 1e6;
+	case ColQmax: return n.Q_max() / 1e6;
+	case ColEnabled: return {};
+	}
+	return {};
+}
+
+bool NodeTableModel::qOutOfLimits(const Node &n) const
+{
+	const double q = m_calcQ.contains(n.id()) ? m_calcQ[n.id()] : n.Q_spec();
+	return q > n.Q_max() || q < n.Q_min();
 }
 
 bool NodeTableModel::setData(const QModelIndex &index, const QVariant &value, int role)
@@ -104,33 +119,45 @@ bool NodeTableModel::setData(const QModelIndex &index, const QVariant &value, in
 		break;
 	}
 	case ColP: {
-		double val = value.toDouble(&ok);
+		const double val = value.toDouble(&ok);
 		if (!ok) return false;
-		n.setP_spec(val);
+		n.setP_spec(val * 1e6);
 		break;
 	}
 	case ColQ: {
-		double val = value.toDouble(&ok);
+		const double val = value.toDouble(&ok);
 		if (!ok) return false;
-		n.setQ_spec(val);
+		n.setQ_spec(val * 1e6);
 		break;
 	}
 	case ColVset: {
-		double val = value.toDouble(&ok);
+		const double val = value.toDouble(&ok);
 		if (!ok) return false;
-		n.setV_set(val);
+		n.setV_set(val * 1e3);
 		break;
 	}
 	case ColQmin: {
-		double val = value.toDouble(&ok);
+		const double val = value.toDouble(&ok);
 		if (!ok) return false;
-		n.setQ_min(val);
+		n.setQ_min(val * 1e6);
 		break;
 	}
 	case ColQmax: {
-		double val = value.toDouble(&ok);
+		const double val = value.toDouble(&ok);
 		if (!ok) return false;
-		n.setQ_max(val);
+		n.setQ_max(val * 1e6);
+		break;
+	}
+	case ColVmag: {
+		const double val = value.toDouble(&ok);
+		if (!ok || val <= 0) return false;
+		n.setV(val * 1e3);  // кВ → В
+		break;
+	}
+	case ColDelta: {
+		const double val = value.toDouble(&ok);
+		if (!ok) return false;
+		n.setDelta(val * M_PI / 180.0);  // град → рад
 		break;
 	}
 	default:
@@ -170,40 +197,37 @@ int NodeTableModel::columnCount(const QModelIndex &parent) const
 
 Qt::ItemFlags NodeTableModel::flags(const QModelIndex &index) const
 {
-    Qt::ItemFlags f = QAbstractTableModel::flags(index);
-    const int col = index.column();
+	Qt::ItemFlags f = QAbstractTableModel::flags(index);
+	const int col = index.column();
 
-    if (col == ColId)
-        return f;  // ID не редактируется
+	if (col == ColId)
+		return f;  // ID не редактируется
 
-    if (col == ColEnabled)
-        return f | Qt::ItemIsUserCheckable;  // checkbox
+	if (col == ColEnabled)
+		return f | Qt::ItemIsUserCheckable;  // checkbox
 
-    if (col == ColVmag || col == ColDelta)
-        return f;  // readonly — результаты расчёта
-
-    return f | Qt::ItemIsEditable;
+	return f | Qt::ItemIsEditable;
 }
 
 QVariant NodeTableModel::headerData(int section, Qt::Orientation orientation, int role) const
 {
-    if (role != Qt::DisplayRole) return {};
-    if (orientation == Qt::Horizontal) {
-        switch (section) {
-        case ColId: return "ID";
-        case ColName: return "Имя";
-        case ColType: return "Тип";
-        case ColP: return "P (Вт)";
-        case ColQ: return "Q (вар)";
-        case ColVset: return "V_set (В)";
-        case ColVmag: return "V (В)";
-        case ColDelta: return "δ (рад)";
-        case ColQmin: return "Q_min (вар)";
-        case ColQmax: return "Q_max (вар)";
-        case ColEnabled: return "Вкл";
-        }
-    }
-    return {};
+	if (role != Qt::DisplayRole) return {};
+	if (orientation == Qt::Horizontal) {
+		switch (section) {
+		case ColId: return "ID";
+		case ColName: return "Имя";
+		case ColType: return "Тип";
+		case ColP: return "P (МВт)";
+		case ColQ: return "Q (Мвар)";
+		case ColVset: return "V_set (кВ)";
+		case ColVmag: return "V (кВ)";
+		case ColDelta: return "δ (град)";
+		case ColQmin: return "Q_min (Мвар)";
+		case ColQmax: return "Q_max (Мвар)";
+		case ColEnabled: return "Вкл";
+		}
+	}
+	return {};
 }
 
 NodeId NodeTableModel::nextFreeId() const
@@ -212,4 +236,10 @@ NodeId NodeTableModel::nextFreeId() const
 	for (const Node &n : m_system.getNodes())
 		maxId = std::max(maxId, n.id());
 	return m_system.nodesCount() ? maxId + 1 : 1;
+}
+
+void NodeTableModel::setCalcQ(const QMap<NodeId, double> &calcQ)
+{
+	m_calcQ = calcQ;
+	refresh();
 }

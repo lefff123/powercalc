@@ -23,6 +23,12 @@ public:
 		ColG,
 		ColB,
 		ColKt,
+		ColPfrom,    // новые
+		ColQfrom,
+		ColPto,
+		ColQto,
+		ColPloss,
+		ColQloss,
 		ColCount
 	};
 
@@ -38,11 +44,14 @@ public:
 	void addLine(const Line &line);
 	void setNames(const QMap<NodeId, QString> &names) { m_names = names; refresh(); }
 	void setNodeModel(NodeTableModel *model) { m_nodeModel = model; }
+	void setFlows(const QVector<LineFlows> &flows);
+	void clearFlows();
 	void refresh();
 
 private:
 	PowerSystem &m_system;
 	QMap<LineId, QString> m_names;
+	QMap<LineId, LineFlows> m_flows;
 	NodeTableModel *m_nodeModel = nullptr;
 
 	LineId nextFreeId() const;

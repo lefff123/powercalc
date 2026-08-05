@@ -43,7 +43,7 @@ public:
 	double V_mag() const
 	{
 		return V_mag_;
-	} // Модуль напряжения (p.u.)
+	} // Модуль напряжения (В)
 	double delta() const
 	{
 		return delta_;

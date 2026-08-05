@@ -44,4 +44,6 @@ private:
 
 private slots:
 	void onImportRastrWin();
+	void onCalculate();
+	void onClearResults();
 };

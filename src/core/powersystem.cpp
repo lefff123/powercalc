@@ -113,22 +113,19 @@ double PowerSystem::Y_base() const
 }
 
 // Конвертация в o.e.
-double PowerSystem::PowerSystem::R_oe(const Line &line) const
-{
-	return line.R() / Z_base_;
-}
-double PowerSystem::X_oe(const Line &line) const
-{
-	return line.X() / Z_base_;
-}
 std::complex<double> PowerSystem::Z_oe(const Line &line) const
 {
-	return std::complex<double>(R_oe(line), X_oe(line));
+	if (!nodes_.empty())  // ← если сеть пустая, не дёргаем BFS
+		recalculateBaseVoltages();
+	const size_t i = nodes_.empty() ? 0 : getNodeIndex(line.from());
+	const double V_base_i = nodes_.empty() ? V_base_ : V_base_per_node_[i];
+	const double Z_base_i = (V_base_i * V_base_i) / S_base_;
+	return std::complex<double>(line.R(), line.X()) / Z_base_i;
 }
-std::complex<double> PowerSystem::Y_oe(const Line &line) const
-{
-	return std::complex<double>(1) / Z_oe(line);
-}
+
+double PowerSystem::R_oe(const Line &line) const { return Z_oe(line).real(); }
+double PowerSystem::X_oe(const Line &line) const { return Z_oe(line).imag(); }
+std::complex<double> PowerSystem::Y_oe(const Line &line) const { return std::complex<double>(1) / Z_oe(line); }
 
 double PowerSystem::P_oe(const Node &node) const
 {
@@ -171,14 +168,19 @@ std::complex<double> PowerSystem::Y_shunt_to_oe(const Line& line) const {
 // Валидация сети
 void PowerSystem::validate() const
 {
-	if (nodes_.empty()) {
+	if (nodes_.empty())
 		throw std::invalid_argument("Network has no nodes");
-	}
-	for (const auto &node : nodes_) {
-		if (node.type() == NodeType::SLACK)
-			return; // Нашли Slack — всё ок
-	}
-	throw std::invalid_argument("Network must have at least one Slack node");
+
+	bool has_slack = false;
+	for (const auto &node : nodes_)
+		if (node.type() == NodeType::SLACK && node.isEnabled())
+			has_slack = true;
+	if (!has_slack)
+		throw std::invalid_argument("Network must have at least one enabled Slack node");
+
+	for (const auto &line : lines_)
+		if (line.isEnabled() && line.R() == 0 && line.X() == 0)
+			throw std::invalid_argument("Line " + std::to_string(line.id()) + " has zero impedance (R=X=0)");
 }
 
 // Создание матрицы проводимостей
@@ -188,11 +190,10 @@ Matrix<std::complex<double>> PowerSystem::buildYBus() const
 	recalculateBaseVoltages();
 	// заполняем проводимостями
 	for (const auto &line : lines_) {
-		if (!line.isEnabled())
-			continue;
+		if (!line.isEnabled()) continue;
 		auto idx_from = getNodeIndex(line.from());
 		auto idx_to = getNodeIndex(line.to());
-
+		if (!nodes_[idx_from].isEnabled() || !nodes_[idx_to].isEnabled()) continue;
 		// Эффективный коэффициент трансформации в о.е.
 		std::complex<double> k_pu = line.k_t() * V_base_per_node_[idx_to] /
 									V_base_per_node_[idx_from];
@@ -239,7 +240,7 @@ std::vector<LineFlows> PowerSystem::calculateLineFlows() const{
 		//находим индексы точек по id
 		size_t i = getNodeIndex(line.from());
 		size_t j = getNodeIndex(line.to());
-		
+		if (!nodes_[i].isEnabled() || !nodes_[j].isEnabled()) continue;
 		//вычисляем комплексные напряжения в точках
 		std::complex<double> V_i = (nodes_[i].V_mag() / V_base_per_node_[i]) * std::complex<double>(std::cos(nodes_[i].delta()), std::sin(nodes_[i].delta()));
 		std::complex<double> V_j = (nodes_[j].V_mag() / V_base_per_node_[j]) * std::complex<double>(std::cos(nodes_[j].delta()), std::sin(nodes_[j].delta()));
@@ -360,6 +361,7 @@ void PowerSystem::recalculateBaseVoltages() const{
 			size_t i = getNodeIndex(line.from());  //  Индекс узла from
 			size_t j = getNodeIndex(line.to());     //  Индекс узла to
 			
+			if (!nodes_[i].isEnabled() || !nodes_[j].isEnabled()) continue;
 			// Переход от current к j (линия from → to)
 			if (i == current && !visited[j]) {  //  Сравниваем индексы
 				V_base_per_node_[j] = V_base_per_node_[current] / std::abs(line.k_t());
@@ -378,7 +380,7 @@ void PowerSystem::recalculateBaseVoltages() const{
 	
 	// 4. Проверка связности
 	for (size_t i = 0; i < nodes_.size(); ++i) {
-		if (!visited[i]) {
+		if (!visited[i] && nodes_[i].isEnabled()) {
 			throw std::runtime_error("Network is disconnected: node " + 
 									std::to_string(nodes_[i].id()) + " unreachable");
 		}

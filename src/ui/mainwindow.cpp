@@ -4,6 +4,7 @@
 #include "linetablemodel.h"
 #include "tabledelegate.h"
 #include "csvparser.h"
+#include "solver.h"
 
 #include <QLabel>
 #include <QMenu>
@@ -14,6 +15,7 @@
 #include <QVBoxLayout>
 #include <QFileDialog>
 #include <QMessageBox>
+#include <QHeaderView>
 
 MainWindow::MainWindow(PowerSystem &system, QWidget *parent) : QMainWindow(parent), m_system(system)
 {
@@ -102,8 +104,10 @@ void MainWindow::createMenusAndToolbars()
 	m_tablesEditMenu->addAction("Удалить ветвь");
 
 	m_calcMenu = menuBar()->addMenu("Расчёт");
-	m_calcMenu->addAction("Рассчитать");
-	m_calcMenu->addAction("Очистить результаты");
+	QAction *calcAction = m_calcMenu->addAction("Рассчитать");
+	connect(calcAction, &QAction::triggered, this, &MainWindow::onCalculate);
+	QAction *clearAction = m_calcMenu->addAction("Очистить результаты");
+	connect(clearAction, &QAction::triggered, this, &MainWindow::onClearResults);
 
 	// Графика
 	m_graphViewMenu = menuBar()->addMenu("Вид");
@@ -148,6 +152,7 @@ void MainWindow::onImportRastrWin()
 		nodeNameMap[m_system.getNodes()[i].id()] = nodeNames[i];
 	}
 	m_nodeModel->setNames(nodeNameMap);
+	m_nodeModel->setCalcQ({});
 	
 	// Заполняем имена линий
 	const QStringList &lineNames = parser.lineNames();
@@ -156,9 +161,77 @@ void MainWindow::onImportRastrWin()
 		lineNameMap[m_system.getLines()[i].id()] = lineNames[i];
 	}
 	m_lineModel->setNames(lineNameMap);
+
+	m_nodeTable->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+	m_lineTable->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
 	
 	statusBar()->showMessage(
 		QString("Импортировано: %1 узлов, %2 линий")
 			.arg(m_system.nodesCount())
 			.arg(m_system.linesCount()));
+}
+
+void MainWindow::onCalculate()
+{
+	try {
+		m_system.validate();
+
+		Solver solver(m_system);
+		const Result res = solver.solve();
+
+		m_nodeModel->refresh();
+
+		if (res.converged) {
+			// Потоки по линиям
+			std::vector<LineFlows> flows = m_system.calculateLineFlows();
+			QVector<LineFlows> qflows;
+			qflows.reserve(static_cast<int>(flows.size()));
+			for (auto &fl : flows) {
+				qflows.append(fl);
+			}
+			m_lineModel->setFlows(qflows);
+
+			// Рассчитанный Q для PV-узлов (для проверки лимитов)
+			auto Y_bus = m_system.buildYBus();
+			const auto &nodes = m_system.getNodes();
+			QMap<NodeId, double> calcQ;
+			for (size_t i = 0; i < nodes.size(); ++i) {
+				if (!nodes[i].isEnabled()) continue;
+				if (nodes[i].type() != NodeType::PV) continue;
+				
+				double q_pu = 0.0;
+				for (size_t j = 0; j < nodes.size(); ++j) {
+					if (!nodes[j].isEnabled()) continue;
+					const double v_i = nodes[i].V_mag() / m_system.V_base(nodes[i].id());
+					const double v_j = nodes[j].V_mag() / m_system.V_base(nodes[j].id());
+					const double braces = Y_bus(i, j).real() * std::sin(nodes[i].delta() - nodes[j].delta())
+										- Y_bus(i, j).imag() * std::cos(nodes[i].delta() - nodes[j].delta());
+					q_pu += v_i * v_j * braces;
+				}
+				calcQ[nodes[i].id()] = q_pu * m_system.S_base();
+			}
+			m_nodeModel->setCalcQ(calcQ);
+
+			statusBar()->showMessage(
+				QString("Расчёт сошёлся за %1 итераций, невязка: %2")
+					.arg(res.iterations)
+					.arg(res.max_mismatch, 0, 'e', 2));
+		} else {
+			QMessageBox::warning(this, "Расчёт",
+				QString("Не сошёлся за %1 итераций. Макс. невязка: %2")
+					.arg(res.iterations)
+					.arg(res.max_mismatch, 0, 'e', 2));
+			statusBar()->showMessage("Расчёт не сошёлся");
+		}
+	} catch (const std::exception &e) {
+		QMessageBox::warning(this, "Ошибка расчёта", e.what());
+		statusBar()->showMessage("Ошибка расчёта");
+	}
+}
+
+void MainWindow::onClearResults()
+{
+	m_lineModel->clearFlows();
+	m_nodeModel->setCalcQ({});
+	statusBar()->showMessage("Результаты очищены");
 }

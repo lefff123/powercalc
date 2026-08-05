@@ -4,6 +4,7 @@
 #include <QComboBox>
 #include <QApplication>
 #include <QStyle>
+#include <QMouseEvent>
 
 class TableDelegate : public QStyledItemDelegate
 {
@@ -58,6 +59,21 @@ public:
 		}
 
 		QStyledItemDelegate::paint(painter, opt, index);
+	}
+
+	bool editorEvent(QEvent *event, QAbstractItemModel *model, const QStyleOptionViewItem &option, const QModelIndex &index) override
+	{
+		if (index.column() == m_checkCol && event->type() == QEvent::MouseButtonRelease) {
+			auto *mouseEvent = static_cast<QMouseEvent*>(event);
+			QRect checkBoxRect = this->checkBoxRect(option);
+			if (checkBoxRect.contains(mouseEvent->pos())) {
+				Qt::CheckState state = index.data(Qt::CheckStateRole).value<Qt::CheckState>();
+				state = (state == Qt::Checked) ? Qt::Unchecked : Qt::Checked;
+				model->setData(index, state, Qt::CheckStateRole);
+				return true;
+			}
+		}
+		return QStyledItemDelegate::editorEvent(event, model, option, index);
 	}
 
 private:

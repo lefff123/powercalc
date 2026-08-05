@@ -96,7 +96,7 @@ TEST(ParserSolverIntegration, Transformer110to10) {
     
     std::string branches_csv =
         "sel;sta;tip;ip;iq;np;groupid;name;r;x;g;b;ktr;n_anc;bd;pl_ip;ql_ip;na;i_max;i_zag\n"
-        "0;0;1;1;2;0;0;Trafo;0.5;10.0;;;11.0;0;0;;;0;;\n";
+        "0;0;1;1;2;0;0;Trafo;0.5;10.0;;;0.0909090909;0;0;;;0;;\n";
     
     // --- Через парсер ---
     std::string np = writeTempFile(nodes_csv, "pss_tr_n.csv");
@@ -109,7 +109,7 @@ TEST(ParserSolverIntegration, Transformer110to10) {
     
     // Проверяем, что базисные напряжения рассчитались правильно
     EXPECT_DOUBLE_EQ(sys_csv.V_base(1), 110e3);
-    EXPECT_DOUBLE_EQ(sys_csv.V_base(2), 10e3);
+    EXPECT_NEAR(sys_csv.V_base(2), 10e3, 1.0);
     
     Solver solver_csv(sys_csv);
     auto res_csv = solver_csv.solve();
@@ -164,7 +164,7 @@ TEST(ParserSolverIntegration, ThreeBusWithShunt) {
     
     std::string branches_csv =
         "sel;sta;tip;ip;iq;np;groupid;name;r;x;g;b;ktr;n_anc;bd;pl_ip;ql_ip;na;i_max;i_zag\n"
-        "0;0;0;1;2;0;0;Line1;5.0;25.0;;0.001;;0;0;;;0;;\n"
+        "0;0;0;1;2;0;0;Line1;5.0;25.0;;-1000;;0;0;;;0;;\n"
         "0;0;0;2;3;0;0;Line2;4.0;20.0;;;;0;0;;;0;;\n";
     
     // --- Через парсер ---

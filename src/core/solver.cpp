@@ -19,6 +19,7 @@ Solver::Solver(PowerSystem &system, const Options &opts)
 	pv_node_indices_.clear();
 
 	for (size_t i = 0; i < n; ++i) {
+		if (!nodes[i].isEnabled()) continue;
 		V_mag_[i] = nodes[i].V_mag() / system_.V_base(nodes[i].id());
 		delta_[i] = nodes[i].delta();
 		types_[i] = nodes[i].type();
@@ -59,6 +60,7 @@ Solver::Solver(PowerSystem &system)
 	pv_node_indices_.clear();
 
 	for (size_t i = 0; i < n; ++i) {
+		if (!nodes[i].isEnabled()) continue;
 		V_mag_[i] = nodes[i].V_mag() / system_.V_base(nodes[i].id());
 		delta_[i] = nodes[i].delta();
 		types_[i] = nodes[i].type();
@@ -97,10 +99,11 @@ Result Solver::solve(){
 		// std::cout << std::endl;
 		
 		double max_mismatch = 0.;
-		for (auto mismatch : mismatches){
-			if (max_mismatch < std::abs(mismatch)){
-				max_mismatch = std::abs(mismatch);
-			}
+		for (auto mismatch : mismatches) {
+			const double a = std::abs(mismatch);
+			if (!std::isfinite(a))
+				return Result(false, i, a);   // nan/inf — не сходимость
+			if (max_mismatch < a) max_mismatch = a;
 		}
 		// std::cout << "Max mismatch: " << max_mismatch << std::endl;
 		
@@ -311,9 +314,6 @@ std::vector<double> Solver::solveLinearSystem(Matrix<double> J, std::vector<doub
 }
 
 void Solver::convertPVtoPQ(size_t idx, double Q_fixed){
-	system_.getNodes()[idx].setType(NodeType::PQ);
-	system_.getNodes()[idx].setQ_spec(Q_fixed);
-	
 	types_[idx] = NodeType::PQ;
 	Q_spec_pu_[idx] = -Q_fixed / system_.S_base();
 
