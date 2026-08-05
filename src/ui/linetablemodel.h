@@ -47,6 +47,7 @@ public:
 	void setFlows(const QVector<LineFlows> &flows);
 	void clearFlows();
 	void refresh();
+	QMap<LineId, QString> names() const { return m_names; }
 
 private:
 	PowerSystem &m_system;

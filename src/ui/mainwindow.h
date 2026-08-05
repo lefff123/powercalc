@@ -21,6 +21,7 @@ private:
 	void createTabs();
 	void createMenusAndToolbars();
 	void applyTabContext(int index);
+	void applyParsedSystem(class CsvParser &parser);
 
 	QTabWidget *m_mainTabs = nullptr;   // Документ | Таблицы | Графика
 	QTabWidget *m_tableTabs = nullptr;  // Узлы | Ветви
@@ -40,10 +41,18 @@ private:
 	QTableView *m_lineTable = nullptr;
 	LineTableModel *m_lineModel = nullptr;
 
+	QTableView *currentTable() const;
+
 	PowerSystem &m_system;
 
 private slots:
 	void onImportRastrWin();
+	void onExportRastrWin();
 	void onCalculate();
 	void onClearResults();
+	void onNewProject();
+	void onSaveProject();
+	void onOpenProject();
+	void onCopySelection();
+	void onPasteSelection();
 };

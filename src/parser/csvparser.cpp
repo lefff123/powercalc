@@ -85,11 +85,13 @@ bool CsvParser::parseNodes(const QString& filepath, PowerSystem& system){
 		double delta_deg = parseDouble(row[headers_["delta"]]);
 		double delta_rad = degToRad(delta_deg);
 		const QString name = row[headers_["name"]].trimmed();
+		const bool disabled = parseSize(row[headers_["sta"]]) != 0;
 		switch (tip){
 			case 0: { // SLACK
 				double vzd_kV = parseDouble(row[headers_["vzd"]], uhom_kV);
 				double vzd_V = vzd_kV * V_MULT;
 				Node node = Node::makeSlack(ny, vzd_V, delta_rad, uhom_V);
+				if (disabled) node.disconnect();
 				system.addNode(node);
 				break;
 			}
@@ -105,6 +107,7 @@ bool CsvParser::parseNodes(const QString& filepath, PowerSystem& system){
 				//        double V_init_volts, double delta_init, double V_nom, 
 				//        double Q_min, double Q_max)
 				Node node = Node::makePV(ny, pg - pn, vzd_V, vzd_V, delta_rad, uhom_V, qmin, qmax);
+				if (disabled) node.disconnect();
 				system.addNode(node);
 				break;
 			}
@@ -117,6 +120,7 @@ bool CsvParser::parseNodes(const QString& filepath, PowerSystem& system){
 				// makePQ(NodeId id, double P_spec, double Q_spec, double V_init, 
 				//        double delta_init = 0.0, double V_nom = 110e3)
 				Node node = Node::makePQ(ny, pn - pg, qn - qg, uhom_V, delta_rad, uhom_V);
+				if (disabled) node.disconnect();
 				system.addNode(node);
 				break;
 			}
@@ -184,6 +188,10 @@ bool CsvParser::parseBranches(const QString& filepath, PowerSystem& system){
 		LineId branch_id = line_counter++;
 		const QString name = row[headers_["name"]].trimmed();
 		Line branch{branch_id, ip, iq, r, x, ktr, std::complex<double>(g, b), is_transformer};
+
+		if (parseSize(row[headers_["sta"]]) != 0)
+			system.disconnectLine(branch_id);
+
 		system.addLine(branch);
 		names_lines_.append(name);
 	}

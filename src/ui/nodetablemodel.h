@@ -57,6 +57,7 @@ public:
 	QString nodeName(NodeId id) const {
 		return m_names.value(id, QString::number(id));
 	}
+	QMap<NodeId, QString> names() const { return m_names; }
 
 private:
 	PowerSystem &m_system;
