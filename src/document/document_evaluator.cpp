@@ -2,6 +2,15 @@
 #include "expr_evaluator.h"
 #include "number_format.h"
 
+namespace {
+std::string trim(const std::string& s) {
+	size_t b = 0, e = s.size();
+	while (b < e && (s[b] == ' ' || s[b] == '\t' || s[b] == '\r')) ++b;
+	while (e > b && (s[e - 1] == ' ' || s[e - 1] == '\t' || s[e - 1] == '\r')) --e;
+	return s.substr(b, e - b);
+}
+} // namespace
+
 namespace powercalc::document {
 
 int prec(const Expr& e) {
@@ -101,28 +110,26 @@ EvaluationResult evaluateDocument(const DocumentAst& ast, SymbolTable& st) {
 			br.emptyRhs = pf.emptyRhs;
 			if (!pf.lhs.empty() && val.has_value()) {
 				br.value = *val;
-				// подстановка только если справа реально есть вычисление
 				if (pf.tree->kind != ExprKind::Number &&
 					pf.tree->kind != ExprKind::Variable &&
 					pf.tree->kind != ExprKind::Constant) {
 					std::string s;
-					if (subLatex(*pf.tree, provider, s)) br.substitutedLatex = s; // ДО define
+					if (subLatex(*pf.tree, provider, s)) br.substitutedLatex = s;
 				}
 			}
 			res.blocks.push_back(std::move(br));
 
 			if (!pf.lhs.empty()) {
-				if (isReservedName(pf.lhs)) continue;   // E007 уже в диагностикаx
+				if (isReservedName(pf.lhs)) continue;
 				if (val.has_value()) {
 					st.define(pf.lhs, *val);
 					res.definitions.emplace_back(pf.lhs, *val);
 				}
-				// при ошибке значение НЕ кладём — старое остаётся живым
 			}
 			continue;
 		}
 
-				if (b.kind == BlockKind::Text) {
+		if (b.kind == BlockKind::Text) {
 			for (const auto& ref : b.inlines) {
 				if (ref.symbolic) continue;
 				if (!st.lookup(ref.name)) {
@@ -130,6 +137,42 @@ EvaluationResult evaluateDocument(const DocumentAst& ast, SymbolTable& st) {
 						ref.line, "undefined variable " + ref.name});
 				}
 			}
+		}
+
+		if (b.kind == BlockKind::Table) {
+			for (const auto& r : b.rows)
+				for (const auto& c : r.cells)
+					for (const auto& ref : c.inlines) {
+						if (!ref.compute) continue;
+						if (!ref.raw.empty() && ref.raw[0] == '!') continue; // ! = чистый LaTeX, без вычисления
+						std::string raw = ref.raw;
+
+						InlineValue iv;
+						if (raw.find('=') == std::string::npos) {
+							auto pe = parseExpression(raw, ref.line);
+							for (const auto& d : pe.diagnostics) res.diagnostics.push_back(d);
+							if (pe.tree) {
+								auto v = evaluate(*pe.tree, provider, res.diagnostics);
+								if (v) { iv.value = v; res.inlineValues[&ref] = iv; }
+							}
+						} else {
+							auto pf = parseFormulaExpr(raw, ref.line);
+							for (const auto& d : pf.diagnostics) res.diagnostics.push_back(d);
+							if (!pf.tree) continue;
+							if (!pf.lhs.empty()) iv.name = pf.lhs;
+							auto v = evaluate(*pf.tree, provider, res.diagnostics);
+							if (v) {
+								if (!pf.lhs.empty() && !isReservedName(pf.lhs)) {
+									st.define(pf.lhs, *v);
+									res.definitions.emplace_back(pf.lhs, *v);
+								}
+								iv.value = v;
+							} else if (pf.emptyRhs) {
+								iv.value = st.lookup(pf.lhs);
+							}
+							if (iv.value || !iv.name.empty()) res.inlineValues[&ref] = iv;
+						}
+					}
 		}
 	}
 	return res;

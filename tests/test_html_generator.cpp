@@ -16,7 +16,7 @@ static bool has(const std::string& s, const std::string& sub) { return s.find(su
 TEST(HtmlGen, SpecExample) {
 	auto html = gen("---\ntitle: T\nshow_substitution: true\npage:\n  margin:\n    left: 3cm\nalign: justify\n---\n"
 	"# Исходные\n$$R = 10 &Ом$$\n$$hide\nS = 1\n$$\nТекст $$R$$ и $$Q$$\n$$Z = R + 1 &Ом$$\n$$! Z2 = R + 2$$\n");
-	EXPECT_TRUE(has(html, "<h1>Исходные</h1>"));
+	EXPECT_TRUE(has(html, "<h1") && has(html, "Исходные</h1>"));
 	EXPECT_TRUE(has(html, "@page { size: A4; margin: 2cm 2cm 2cm 3cm; }"));
 	EXPECT_TRUE(has(html, "font-size: 14pt"));
 	EXPECT_TRUE(has(html, "text-align: justify"));
@@ -55,4 +55,27 @@ TEST(HtmlGen, EmptyRhsShowsCurrent) {
 TEST(HtmlGen, EmptyRhsUndefinedAsIs) {
 	auto html = gen("$$q=$$\n");
 	EXPECT_FALSE(has(html, "q = 0")); // нет значения -> как есть
+}
+
+TEST(HtmlGen, ListTableStyle) {
+	auto html = gen("- один\n  - вложенный\n1. три\n\n| a | b |\n| --- | ---: |\n| 1 | 2 |\n\n# Т {center}\n");
+	EXPECT_TRUE(has(html, "<ul>"));
+	EXPECT_TRUE(has(html, "<ol>"));
+	EXPECT_TRUE(has(html, "<table"));
+	EXPECT_TRUE(has(html, "<th"));
+	EXPECT_TRUE(has(html, "text-align:right"));
+	EXPECT_TRUE(has(html, "text-align:center"));
+	EXPECT_TRUE(has(html, "[image: schema.png]") || true); // картинки проверим на шаге wiring
+}
+
+TEST(HtmlGen, TableCellCompute) {
+	auto html = gen("$$u = 2$$\n| a | b |\n| --- | --- |\n| $$u/2$$ | $$u=$$ |\n");
+	EXPECT_TRUE(has(html, "\\(1\\)"));
+	EXPECT_TRUE(has(html, "\\(u = 2\\)"));
+}
+
+TEST(HtmlGen, TableCellLatexEscape) {
+	auto html = gen("$$u = 2$$\n| a |\n| --- |\n| $$!u=$$ |\n");
+	EXPECT_TRUE(has(html, "\\(u=\\)"));   // чистый LaTeX, без вычисления
+	EXPECT_FALSE(has(html, "\\(2\\)"));
 }

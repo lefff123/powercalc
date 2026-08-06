@@ -45,10 +45,10 @@ bool isFormulaOpen(const std::string& line) {
 	if (line.rfind("$$", 0) != 0) return false;
 	size_t close = line.find("$$", 2);
 	if (close == std::string::npos) return true;
-	if (!trim(line.substr(close + 2)).empty()) return false;
+	std::string tail = trim(line.substr(close + 2));
+	if (!tail.empty() && !(tail.front() == '{' && tail.back() == '}')) return false;
 	std::string inner = trim(line.substr(2, close - 2));
 	if (inner.empty()) return true;
-	// начинается с модификатора -> это блок, а не inline
 	for (const std::string& m : {"hide!", "hide", "!"}) {
 		if (inner == m || (inner.rfind(m, 0) == 0 &&
 			(inner[m.size()] == ' ' || inner[m.size()] == '\t')))
@@ -71,6 +71,120 @@ bool yamlAs(const YAML::Node& n, T& out) {
 
 const std::regex reMargin(R"(^\d+(\.\d+)?(cm|mm)$)");
 const std::regex rePt(R"(^\d+(\.\d+)?pt$)");
+
+bool isListLine(const std::string& s, int& level, bool& ordered, std::string& text) {
+	size_t sp = 0;
+	while (sp < s.size() && s[sp] == ' ') ++sp;
+	if (sp == s.size()) return false;
+	level = static_cast<int>(sp / 2);
+	if (level > 2) level = 2;
+	size_t i = sp;
+	if (s[i] == '-' && i + 1 < s.size() && s[i + 1] == ' ') {
+		ordered = false; text = trim(s.substr(i + 2)); return !text.empty();
+	}
+	size_t j = i;
+	while (j < s.size() && s[j] >= '0' && s[j] <= '9') ++j;
+	if (j > i && j + 1 < s.size() && s[j] == '.' && s[j + 1] == ' ') {
+		ordered = true; text = trim(s.substr(j + 2)); return !text.empty();
+	}
+	return false;
+}
+
+bool isTableLine(const std::string& s) {
+	const std::string t = trim(s);
+	return t.size() >= 2 && t.front() == '|' && t.back() == '|';
+}
+
+std::vector<std::string> splitTableRow(const std::string& t) {
+	std::vector<std::string> out;
+	std::string acc;
+	for (size_t i = 1; i < t.size(); ++i) {
+		if (t[i] == '|') { out.push_back(acc); acc.clear(); }
+		else acc += t[i];
+	}
+	return out;
+}
+
+bool isSepCell(const std::string& c) {
+	std::string t = trim(c);
+	if (t.empty()) return false;
+	size_t i = 0;
+	if (t[i] == ':') ++i;
+	size_t d = i;
+	while (i < t.size() && t[i] == '-') ++i;
+	if (i == d) return false;
+	if (i < t.size() && t[i] == ':') ++i;
+	return i == t.size();
+}
+
+bool isSeparatorRow(const std::vector<std::string>& cells, std::vector<char>& aligns) {
+	if (cells.empty()) return false;
+	aligns.clear();
+	for (const auto& c : cells) {
+		std::string t = trim(c);
+		if (!isSepCell(t)) return false;
+		bool l = t.front() == ':', r = t.back() == ':';
+		aligns.push_back(l && r ? 'c' : r ? 'r' : l ? 'l' : 0);
+	}
+	return true;
+}
+
+bool isImageLine(const std::string& s) {
+	if (s.rfind("![", 0) != 0) return false;
+	size_t cb = s.find(']');
+	if (cb == std::string::npos || cb + 1 >= s.size() || s[cb + 1] != '(') return false;
+	return s.back() == ')';
+}
+
+void parseLocalStyle(Block& b, std::string& firstLine, int lineNo, DocumentAst& ast) {
+	if (firstLine.empty() || firstLine.back() != '}') return;
+	size_t ob = firstLine.rfind('{');
+	if (ob == std::string::npos) return;
+	std::string inner = trim(firstLine.substr(ob + 1, firstLine.size() - ob - 2));
+	firstLine = trim(firstLine.substr(0, ob));
+	size_t st = 0;
+	while (true) {
+		size_t cm = inner.find(',', st);
+		std::string tok = trim(inner.substr(st, cm == std::string::npos ? std::string::npos : cm - st));
+		if (!tok.empty()) {
+			std::string t = tok;
+			if (t.rfind("align:", 0) == 0) t = trim(t.substr(6));
+			else if (t.rfind("size:", 0) == 0) t = trim(t.substr(5));
+			if (t == "left" || t == "center" || t == "right" || t == "justify") b.localAlign = t;
+			else if (std::regex_match(t, rePt)) b.localSize = t;
+			else addDiag(ast, Diagnostic::Level::Warning, "W001", lineNo, "unknown style: " + tok);
+		}
+		if (cm == std::string::npos) break;
+		st = cm + 1;
+	}
+}
+
+void scanInlinesInto(std::vector<InlineRef>& out, const std::string& line, int lineNo, DocumentAst& ast, bool compute) {
+	size_t p = 0;
+	while ((p = line.find("$$", p)) != std::string::npos) {
+		size_t close = line.find("$$", p + 2);
+		if (close == std::string::npos) break;
+		std::string content = trim(line.substr(p + 2, close - p - 2));
+		if (content.empty()) {
+			addDiag(ast, Diagnostic::Level::Warning, "W001", lineNo, "bad inline formula: " + content);
+			p = close + 2;
+			continue;
+		}
+		InlineRef ref;
+		ref.line = lineNo;
+		ref.col = static_cast<int>(p) + 1;
+		ref.length = static_cast<int>(close - p) + 2;
+		ref.symbolic = true;
+		ref.raw = content;
+		ref.compute = compute;
+		out.push_back(ref);
+		p = close + 2;
+	}
+}
+
+void scanInlines(Block& b, const std::string& line, int lineNo, DocumentAst& ast) {
+	scanInlinesInto(b.inlines, line, lineNo, ast, false);
+}
 
 void fillMargin(const YAML::Node& m, DocumentMeta& meta, DocumentAst& ast, int yamlLine) {
 	static const char* keys[4] = {"top", "bottom", "left", "right"};
@@ -190,44 +304,42 @@ int parseFormula(const std::vector<std::string>& lines, int start, DocumentAst& 
 	bool closed = false;
 	int endLine = n - 1;
 
-	// обрабатывает строку li с офсета off; true => блок закрылся на этой строке
 	auto processLine = [&](int li, size_t off) -> bool {
-	const std::string& s = lines[li];
-	size_t i = off;
-	std::string acc;
-	while (i < s.size()) {
-		if (s.compare(i, 2, "$$") == 0) {
-			std::string t = trim(acc);
-			if (!t.empty()) content.emplace_back(li + 1, t);
-			endLine = li;
-			return true;
-		}
-		if (s[i] == '#') {
-			std::string t = trim(acc);
-			if (!t.empty()) content.emplace_back(li + 1, t);
-			size_t d = s.find("$$", i);
-			if (d == std::string::npos) { 
-				f.comments.emplace_back(li + 1, s.substr(i)); 
-				return false;  // <-- было break
+		const std::string& s = lines[li];
+		size_t i = off;
+		std::string acc;
+		while (i < s.size()) {
+			if (s.compare(i, 2, "$$") == 0) {
+				std::string t = trim(acc);
+				if (!t.empty()) content.emplace_back(li + 1, t);
+				endLine = li;
+				return true;
 			}
-			f.comments.emplace_back(li + 1, s.substr(i, d - i));
-			endLine = li;
-			return true;
-		}
-		size_t h = s.find('#', i);
-		size_t d = s.find("$$", i);
-		size_t stop = s.size();
-		if (h != std::string::npos) stop = h;
-		if (d != std::string::npos && d < stop) stop = d;
-		acc += s.substr(i, stop - i);
-		i = stop;
+			if (s[i] == '#') {
+				std::string t = trim(acc);
+				if (!t.empty()) content.emplace_back(li + 1, t);
+				size_t d = s.find("$$", i);
+				if (d == std::string::npos) {
+					f.comments.emplace_back(li + 1, s.substr(i));
+					return false;
+				}
+				f.comments.emplace_back(li + 1, s.substr(i, d - i));
+				endLine = li;
+				return true;
+			}
+			size_t h = s.find('#', i);
+			size_t d = s.find("$$", i);
+			size_t stop = s.size();
+			if (h != std::string::npos) stop = h;
+			if (d != std::string::npos && d < stop) stop = d;
+			acc += s.substr(i, stop - i);
+			i = stop;
 		}
 		std::string t = trim(acc);
 		if (!t.empty()) content.emplace_back(li + 1, t);
 		return false;
 	};
 
-	// открывающая строка: модификатор + возможно контент
 	{
 		const std::string& s = lines[start];
 		size_t i = 2;
@@ -262,6 +374,19 @@ int parseFormula(const std::vector<std::string>& lines, int start, DocumentAst& 
 	}
 	b.lineEnd = endLine + 1;
 
+	// суффикс {…} после закрывающего $$ — локальный стиль блока
+	{
+		const std::string& s = lines[endLine];
+		size_t d = s.rfind("$$");
+		if (d != std::string::npos && d + 2 < s.size()) {
+			std::string tail = trim(s.substr(d + 2));
+			if (tail.size() >= 2 && tail.front() == '{' && tail.back() == '}') {
+				std::string tmp = tail;
+				parseLocalStyle(b, tmp, endLine + 1, ast);
+			}
+		}
+	}
+
 	std::string expr;
 	for (size_t ci = 0; ci < content.size(); ++ci) {
 		std::string t = content[ci].second;
@@ -280,26 +405,75 @@ int parseFormula(const std::vector<std::string>& lines, int start, DocumentAst& 
 	return next;
 }
 
-void scanInlines(Block& b, const std::string& line, int lineNo, DocumentAst& ast) {
-	size_t p = 0;
-	while ((p = line.find("$$", p)) != std::string::npos) {
-		size_t close = line.find("$$", p + 2);
-		if (close == std::string::npos) break;
-		std::string content = trim(line.substr(p + 2, close - p - 2));
-		if (content.empty()) {
-			addDiag(ast, Diagnostic::Level::Warning, "W001", lineNo, "bad inline formula: " + content);
-			p = close + 2;
-			continue;
-		}
-		InlineRef ref;
-		ref.line = lineNo;
-		ref.col = static_cast<int>(p) + 1;
-		ref.length = static_cast<int>(close - p) + 2;
-		ref.symbolic = true;
-		ref.raw = content;
-		b.inlines.push_back(ref);
-		p = close + 2;
+int parseList(const std::vector<std::string>& lines, int start, DocumentAst& ast) {
+	const int n = static_cast<int>(lines.size());
+	Block b;
+	b.kind = BlockKind::List;
+	b.lineBegin = start + 1;
+	int i = start;
+	bool first = true;
+	while (i < n && !isEmpty(lines[i])) {
+		if (headingLevel(lines[i]) || isFormulaOpen(lines[i]) ||
+			isTableLine(lines[i]) || isImageLine(lines[i])) break;
+		int level; bool ordered; std::string text;
+		if (!isListLine(lines[i], level, ordered, text)) break;
+		if (first) { parseLocalStyle(b, text, i + 1, ast); first = false; }
+		ListItem it;
+		it.level = level; it.ordered = ordered; it.line = i + 1; it.text = text;
+		scanInlinesInto(it.inlines, text, i + 1, ast, false);
+		b.items.push_back(std::move(it));
+		++i;
 	}
+	b.lineEnd = i;
+	ast.blocks.push_back(std::move(b));
+	return i;
+}
+
+int parseTable(const std::vector<std::string>& lines, int start, DocumentAst& ast) {
+	const int n = static_cast<int>(lines.size());
+	Block b;
+	b.kind = BlockKind::Table;
+	b.lineBegin = start + 1;
+	int i = start;
+	std::vector<std::vector<std::string>> rawRows;
+	std::vector<int> rowLines;
+	while (i < n && isTableLine(lines[i])) {
+		rawRows.push_back(splitTableRow(trim(lines[i])));
+		rowLines.push_back(i + 1);
+		++i;
+	}
+	std::vector<char> aligns;
+	bool haveSep = rawRows.size() >= 2 && isSeparatorRow(rawRows[1], aligns);
+	for (size_t r = 0; r < rawRows.size(); ++r) {
+		if (haveSep && r == 1) continue;
+		TableRow tr;
+		tr.line = rowLines[r];
+		tr.header = haveSep && r == 0;
+		for (size_t c = 0; c < rawRows[r].size(); ++c) {
+			TableCell cell;
+			cell.text = trim(rawRows[r][c]);
+			cell.align = c < aligns.size() ? aligns[c] : 0;
+			scanInlinesInto(cell.inlines, cell.text, tr.line, ast, true);
+			tr.cells.push_back(std::move(cell));
+		}
+		b.rows.push_back(std::move(tr));
+	}
+	b.lineEnd = i;
+	ast.blocks.push_back(std::move(b));
+	return i;
+}
+
+int parseImage(const std::string& line, int start, DocumentAst& ast) {
+	Block b;
+	b.kind = BlockKind::Image;
+	b.lineBegin = b.lineEnd = start + 1;
+	b.raw = line;
+	size_t ob = line.find('['), cb = line.find(']', ob);
+	size_t op = line.find('(', cb), cp = line.find(')', op);
+	b.imageAlt = trim(line.substr(ob + 1, cb - ob - 1));
+	b.imageName = trim(line.substr(op + 1, cp - op - 1));
+	ast.blocks.push_back(std::move(b));
+	return start + 1;
 }
 
 } // namespace
@@ -327,11 +501,21 @@ DocumentAst DocumentParser::parse(const std::string& source) const {
 			b.lineBegin = b.lineEnd = i + 1;
 			b.level = lvl;
 			b.text = trim(line.substr(lvl));
+			parseLocalStyle(b, b.text, i + 1, ast);
 			b.raw = line;
 			ast.blocks.push_back(std::move(b));
 			++i;
 			continue;
 		}
+
+		if (isImageLine(line)) { i = parseImage(line, i, ast); continue; }
+
+		{
+			int lLevel; bool lOrdered; std::string lText;
+			if (isListLine(line, lLevel, lOrdered, lText)) { i = parseList(lines, i, ast); continue; }
+		}
+
+		if (isTableLine(line)) { i = parseTable(lines, i, ast); continue; }
 
 		if (isFormulaOpen(line)) { i = parseFormula(lines, i, ast); continue; }
 
@@ -339,11 +523,19 @@ DocumentAst DocumentParser::parse(const std::string& source) const {
 		b.kind = BlockKind::Text;
 		const int start = i;
 		std::string raw;
-				while (i < n && !isEmpty(lines[i])) {
+		while (i < n && !isEmpty(lines[i])) {
 			if (headingLevel(lines[i])) break;
 			if (isFormulaOpen(lines[i])) break;
-			scanInlines(b, lines[i], i + 1, ast);
-			raw += (raw.empty() ? "" : "\n") + lines[i];
+			if (isImageLine(lines[i])) break;
+			if (isTableLine(lines[i])) break;
+			{
+				int ll; bool oo; std::string tt;
+				if (isListLine(lines[i], ll, oo, tt)) break;
+			}
+			std::string ln = lines[i];
+			if (i == start) parseLocalStyle(b, ln, i + 1, ast);
+			scanInlines(b, ln, i + 1, ast);
+			raw += (raw.empty() ? "" : "\n") + ln;
 			++i;
 		}
 		b.lineBegin = start + 1;

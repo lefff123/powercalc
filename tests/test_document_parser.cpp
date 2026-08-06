@@ -260,3 +260,30 @@ TEST(DocumentParser, BlockAfterInlineClose) {
 	ASSERT_NE(t, nullptr);
 	EXPECT_EQ(t->text, "text after");
 }
+
+TEST(DocumentParser, ListBasic) {
+	auto a = parse("- один\n- два\n  - два.1\n1. три\n");
+	ASSERT_EQ(a.blocks.size(), 1u);
+	EXPECT_EQ(a.blocks[0].kind, BlockKind::List);
+	EXPECT_EQ(a.blocks[0].items.size(), 4u);
+	EXPECT_EQ(a.blocks[0].items[2].level, 1);
+	EXPECT_TRUE(a.blocks[0].items[3].ordered);
+}
+TEST(DocumentParser, TableBasic) {
+	auto a = parse("| a | b |\n| --- | ---: |\n| 1 | 2 |\n");
+	ASSERT_EQ(a.blocks.size(), 1u);
+	EXPECT_EQ(a.blocks[0].kind, BlockKind::Table);
+	EXPECT_EQ(a.blocks[0].rows.size(), 2u);
+	EXPECT_TRUE(a.blocks[0].rows[0].header);
+	EXPECT_EQ(a.blocks[0].rows[1].cells[1].align, 'r');
+}
+TEST(DocumentParser, ImageAndStyle) {
+	auto a = parse("![Схема](schema.png)\n# Титл {center,12pt}\n");
+	ASSERT_EQ(a.blocks.size(), 2u);
+	EXPECT_EQ(a.blocks[0].kind, BlockKind::Image);
+	EXPECT_EQ(a.blocks[0].imageName, "schema.png");
+	EXPECT_EQ(a.blocks[1].kind, BlockKind::Heading);
+	EXPECT_EQ(a.blocks[1].localAlign, "center");
+	EXPECT_EQ(a.blocks[1].localSize, "12pt");
+	EXPECT_EQ(a.blocks[1].text, "Титл");
+}

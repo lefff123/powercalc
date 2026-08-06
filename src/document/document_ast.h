@@ -20,6 +20,7 @@ struct InlineRef {
 	int col = 0;
 	int length = 0;
 	bool symbolic = false; // $$выражение$$ -> рендер как LaTeX inline
+	bool compute = false; // ячейка таблицы: вычислять выражение
 	std::string raw;
 };
 

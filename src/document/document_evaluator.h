@@ -3,8 +3,15 @@
 #include "symbol_table.h"
 #include <optional>
 #include <vector>
+#include <map>
 
 namespace powercalc::document {
+
+struct InlineValue {
+	std::string name;              // "" => просто значение; иначе "name = value"
+	std::optional<Value> value;
+};
+
 
 struct BlockEvalResult {
 	const Block* block = nullptr;
@@ -18,6 +25,7 @@ struct EvaluationResult {
 	std::vector<Diagnostic> diagnostics;
 	std::vector<std::pair<std::string, Value>> definitions; // в порядке вычисления
 	std::vector<BlockEvalResult> blocks;
+	std::map<const InlineRef*, InlineValue> inlineValues;
 };
 
 EvaluationResult evaluateDocument(const DocumentAst& ast, SymbolTable& st);

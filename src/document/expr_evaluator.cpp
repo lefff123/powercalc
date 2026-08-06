@@ -150,6 +150,12 @@ struct Parser {
 		return left;
 	}
 
+	ExprPtr parsePure() {
+		ExprPtr e = parseExpr();
+		if (cur().kind != Token::Kind::End) mkError("unexpected tokens after expression");
+		return e;
+	}
+
 	ExprPtr parseExpr() {
 		ExprPtr e = parseTerm();
 		while (opIs("+") || opIs("-")) {
@@ -282,6 +288,18 @@ ParsedFormula parseFormulaExpr(const std::string& src, int line) {
 	Parser pr{tokens, 0, line, res.diagnostics};
 	res.tree = pr.parseAssign(res.lhs);
 	res.emptyRhs = pr.emptyRhs;
+	return res;
+}
+
+ParsedExpr parseExpression(const std::string& src, int line) {
+	ParsedExpr res;
+	auto tokens = tokenize(src, res.diagnostics, line);
+	if (tokens.front().kind == Token::Kind::End) {
+		res.diagnostics.push_back({Diagnostic::Level::Error, "E010", line, "empty expression"});
+		return res;
+	}
+	Parser pr{tokens, 0, line, res.diagnostics};
+	res.tree = pr.parsePure();
 	return res;
 }
 

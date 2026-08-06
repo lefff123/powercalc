@@ -18,6 +18,12 @@ struct ParsedFormula {
 	std::vector<Diagnostic> diagnostics;
 };
 
+struct ParsedExpr {
+	ExprPtr tree;
+	std::vector<Diagnostic> diagnostics;
+};
+
+ParsedExpr parseExpression(const std::string& src, int line);
 ParsedFormula parseFormulaExpr(const std::string& src, int line);
 std::optional<Value> evaluate(const Expr& tree, const ValueProvider& get, std::vector<Diagnostic>& diags);
 bool isReservedName(const std::string& normalized);

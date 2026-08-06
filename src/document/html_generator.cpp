@@ -3,6 +3,15 @@
 #include <map>
 #include <sstream>
 
+namespace {
+std::string trim(const std::string& s) {
+	size_t b = 0, e = s.size();
+	while (b < e && (s[b] == ' ' || s[b] == '\t' || s[b] == '\r')) ++b;
+	while (e > b && (s[e - 1] == ' ' || s[e - 1] == '\t' || s[e - 1] == '\r')) --e;
+	return s.substr(b, e - b);
+}
+} // namespace
+
 namespace powercalc::document {
 namespace {
 
@@ -27,6 +36,40 @@ std::vector<std::string> lines(const std::string& s) {
 	}
 }
 
+void renderLine(std::ostringstream& h, const std::string& ln, const std::vector<InlineRef>& refs, int lineNo,
+				const std::map<const InlineRef*, InlineValue>* iv) {
+	size_t pos = 0;
+	for (const auto& ref : refs) {
+		if (ref.line != lineNo) continue;
+		const size_t st = static_cast<size_t>(ref.col) - 1;
+		if (st < pos || st + ref.length > ln.size() + 1) continue;
+		h << esc(ln.substr(pos, st - pos));
+		if (ref.compute && iv) {
+			auto it = iv->find(&ref);
+			if (it != iv->end() && it->second.value) {
+				h << "\\(";
+				if (!it->second.name.empty()) h << esc(it->second.name) << " = ";
+				h << esc(formatValue(*it->second.value));
+				h << "\\)";
+				pos = st + ref.length;
+				continue;
+			}
+		}
+		std::string r = ref.raw;
+		if (!r.empty() && r[0] == '!') r = trim(r.substr(1));
+		h << "<span class=\"pc-inline\">\\(" << esc(r) << "\\)</span>";
+		pos = st + ref.length;
+	}
+	h << esc(ln.substr(pos));
+}
+
+std::string styleAttr(const Block& b, const DocumentMeta& m) {
+	std::string align = b.localAlign.empty() ? m.align : b.localAlign;
+	std::string s = "text-align:" + align + ";";
+	if (!b.localSize.empty()) s += "font-size:" + b.localSize + ";";
+	return " style=\"" + s + "\"";
+}
+
 } // namespace
 
 std::string generateHtml(const DocumentAst& ast, const EvaluationResult& res, const HtmlOptions& opts) {
@@ -46,6 +89,12 @@ std::string generateHtml(const DocumentAst& ast, const EvaluationResult& res, co
 	  << "body { font-family: \"Times New Roman\", Times, serif; font-size: " << esc(m.textSize)
 	  << "; text-align: " << m.align << "; }\n"
 	  << ".pc-formula { margin: 0.6em 0; }\n"
+	  << "ul, ol { margin: 0.4em 0; padding-left: 2em; }\n"
+	  << "table { border-collapse: collapse; margin: 0.6em auto; }\n"
+	  << "td, th { border: 1px solid black; padding: 4px 8px; }\n"
+	  << "th { font-weight: normal; }\n"
+	  << "img { max-width: 100%; }\n"
+	  << ".pc-img-cap { color: gray; font-size: 0.9em; margin-top: 0.3em; }\n"
 	  << ".pc-missing { color: gray; }\n"
 	  << "p, .pc-formula { overflow-wrap: break-word; line-height: 1.9; }\n"
 	  << "p { hyphens: auto; }\n"
@@ -55,33 +104,82 @@ std::string generateHtml(const DocumentAst& ast, const EvaluationResult& res, co
 		switch (b.kind) {
 		case BlockKind::Yaml: break;
 		case BlockKind::Heading:
-			h << "<h" << b.level << ">" << esc(b.text) << "</h" << b.level << ">\n";
+			h << "<h" << b.level << styleAttr(b, m) << ">" << esc(b.text) << "</h" << b.level << ">\n";
 			break;
 		case BlockKind::Text: {
-			h << "<p style=\"text-align:" << m.align << "\">";
+			h << "<p" << styleAttr(b, m) << ">";
 			const auto ls = lines(b.text);
 			for (size_t li = 0; li < ls.size(); ++li) {
 				if (li) h << "<br>";
-				const int lineNo = b.lineBegin + static_cast<int>(li);
-				const std::string& ln = ls[li];
-				size_t pos = 0;
-				for (const auto& ref : b.inlines) {
-					if (ref.line != lineNo) continue;
-					const size_t st = static_cast<size_t>(ref.col) - 1;
-					if (st < pos || st + ref.length > ln.size()) continue;
-					h << esc(ln.substr(pos, st - pos));
-					if (ref.symbolic) {
-						h << "<span class=\"pc-inline\">\\(" << esc(ref.raw) << "\\)</span>";
-					} else {
-						auto it = values.find(ref.name);
-						if (it == values.end()) h << "<span class=\"pc-missing\">?""?</span>";
-						else h << "<span class=\"pc-inline\">" << esc(formatValue(it->second)) << "</span>";
-					}
-					pos = st + ref.length;
-				}
-				h << esc(ln.substr(pos));
+				renderLine(h, ls[li], b.inlines, b.lineBegin + static_cast<int>(li), nullptr);
 			}
 			h << "</p>\n";
+			break;
+		}
+		case BlockKind::List: {
+			h << "<div style=\"text-align:left;"
+			  << (b.localSize.empty() ? std::string() : "font-size:" + b.localSize + ";")
+			  << "\">";
+			std::vector<bool> stack; // opened: ordered?
+			bool liOpen = false;
+			for (const auto& it : b.items) {
+				// закрыть уровни глубже текущего
+				while (static_cast<int>(stack.size()) > it.level + 1) {
+					if (liOpen) { h << "</li>"; liOpen = false; }
+					h << (stack.back() ? "</ol>" : "</ul>");
+					stack.pop_back();
+				}
+				// на текущем уровне — если тип списка сменился, переоткрыть
+				if (static_cast<int>(stack.size()) == it.level + 1) {
+					if (liOpen) { h << "</li>"; liOpen = false; }
+					if (stack.back() != it.ordered) {
+						h << (stack.back() ? "</ol>" : "</ul>");
+						stack.pop_back();
+					}
+				}
+				// открыть нужные уровни
+				while (static_cast<int>(stack.size()) < it.level + 1) {
+					h << (it.ordered ? "<ol>" : "<ul>");
+					stack.push_back(it.ordered);
+				}
+				h << "<li>";
+				liOpen = true;
+				renderLine(h, it.text, it.inlines, it.line, nullptr);
+			}
+			while (!stack.empty()) {
+				if (liOpen) { h << "</li>"; liOpen = false; }
+				h << (stack.back() ? "</ol>" : "</ul>");
+				stack.pop_back();
+			}
+			h << "</div>\n";
+			break;
+		}
+		case BlockKind::Table: {
+			h << "<table>\n";
+			for (const auto& r : b.rows) {
+				h << "<tr>";
+				for (const auto& c : r.cells) {
+					h << (r.header ? "<th" : "<td");
+					const char* al = c.align == 'l' ? "left" : c.align == 'r' ? "right" : "center";
+					h << " style=\"text-align:" << al << "\"";
+					h << ">";
+					renderLine(h, c.text, c.inlines, r.line, &res.inlineValues);
+					h << (r.header ? "</th>" : "</td>");
+				}
+				h << "</tr>\n";
+			}
+			h << "</table>\n";
+			break;
+		}
+		case BlockKind::Image: {
+			std::string uri = opts.imageResolver ? opts.imageResolver(b.imageName) : "";
+			if (uri.empty()) {
+				h << "<p><span class=\"pc-missing\">[image: " << esc(b.imageName) << "]</span></p>\n";
+			} else {
+				h << "<div style=\"text-align:center\"><img src=\"" << uri << "\" alt=\"" << esc(b.imageAlt) << "\">";
+				if (!b.imageAlt.empty()) h << "<div class=\"pc-img-cap\">" << esc(b.imageAlt) << "</div>";
+				h << "</div>\n";
+			}
 			break;
 		}
 		case BlockKind::Formula: {
@@ -91,7 +189,7 @@ std::string generateHtml(const DocumentAst& ast, const EvaluationResult& res, co
 			if (it != perBlock.end() && it->second->emptyRhs) {
 				auto v = values.find(it->second->lhs);
 				if (v != values.end()) {
-					h << "<div class=\"pc-formula\">\\(\\displaystyle " << esc(it->second->lhs)
+					h << "<div class=\"pc-formula\"" << styleAttr(b, m) << ">\\(\\displaystyle " << esc(it->second->lhs)
 					<< " = " << esc(formatValue(v->second)) << "\\)</div>\n";
 					break;
 				}
