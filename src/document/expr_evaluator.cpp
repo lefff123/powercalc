@@ -131,8 +131,14 @@ struct Parser {
 			++p;
 			if (left && left->kind == ExprKind::Variable) lhs = left->name;
 			else diags.push_back({Diagnostic::Level::Error, "E010", line, "left side must be a variable"});
-			ExprPtr right = parseExpr();
-			if (cur().kind != Token::Kind::End) mkError("unexpected tokens after expression");
+			ExprPtr right;
+			if (cur().kind == Token::Kind::End) {
+				diags.push_back({Diagnostic::Level::Warning, "W001", line, "empty right-hand side"});
+				right = mk(ExprKind::Error);
+			} else {
+				right = parseExpr();
+				if (cur().kind != Token::Kind::End) mkError("unexpected tokens after expression");
+			}
 			if (!lhs.empty() && isReservedName(lhs))
 				diags.push_back({Diagnostic::Level::Error, "E007", line, "reserved name: " + lhs});
 			return right;

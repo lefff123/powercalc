@@ -44,6 +44,7 @@ private:
 	QListWidget* m_errorList = nullptr;
 	QTimer* m_timer = nullptr;
 	DocumentHighlighter* m_highlighter = nullptr;
+	std::vector<powercalc::document::Diagnostic> m_allDiags;
 
 	powercalc::document::DocumentParser m_parser;
 	powercalc::document::DocumentAst m_ast;

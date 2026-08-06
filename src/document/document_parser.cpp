@@ -40,12 +40,24 @@ int headingLevel(const std::string& line) {
 	return static_cast<int>(h);
 }
 
-// true => это ОТКРЫВАЮЩАЯ строка блока формулы (mod = текст после $$)
-bool isFormulaOpen(const std::string& line, std::string& mod) {
+// строка открывает блок формулы, если начинается с $$ и это не inline
+bool isFormulaOpen(const std::string& line) {
 	if (line.rfind("$$", 0) != 0) return false;
-	if (line.find("$$", 2) != std::string::npos) return false; // inline в тексте
-	mod = trim(line.substr(2));
-	return true;
+	size_t close = line.find("$$", 2);
+	if (close == std::string::npos) return true;
+	if (!trim(line.substr(close + 2)).empty()) return false;
+	std::string inner = trim(line.substr(2, close - 2));
+	if (inner.empty()) return true;
+	// начинается с модификатора -> это блок, а не inline
+	for (const std::string& m : {"hide!", "hide", "!"}) {
+		if (inner == m || (inner.rfind(m, 0) == 0 &&
+			(inner[m.size()] == ' ' || inner[m.size()] == '\t')))
+			return true;
+	}
+	size_t k = 0;
+	if (inner[0] == '\\') k = 1;
+	auto ns = utf8::readVariable(inner, k);
+	return !(ns.ok && k == inner.size());
 }
 
 void addDiag(DocumentAst& ast, Diagnostic::Level lv, const std::string& code, int line, std::string msg) {
@@ -167,52 +179,105 @@ int parseYaml(const std::vector<std::string>& lines, int start, DocumentAst& ast
 	return close == -1 ? n : close + 1;
 }
 
-int parseFormula(const std::vector<std::string>& lines, int start, const std::string& mod, DocumentAst& ast) {
+int parseFormula(const std::vector<std::string>& lines, int start, DocumentAst& ast) {
 	const int n = static_cast<int>(lines.size());
 	Block b;
 	b.kind = BlockKind::Formula;
 	b.lineBegin = start + 1;
 	FormulaInfo& f = b.formula;
-	f.modifierRaw = mod;
-	if (mod == "hide") f.hide = true;
-	else if (mod == "!") f.invertSubstitution = true;
-	else if (mod == "hide!") { f.hide = true; f.invertSubstitution = true; }
-	else if (!mod.empty()) addDiag(ast, Diagnostic::Level::Error, "E003", start + 1, "unknown modifier: " + mod);
-
-	int close = -1;
-	for (int j = start + 1; j < n; ++j)
-		if (trim(lines[j]) == "$$") { close = j; break; }
-	const int end = close == -1 ? n : close;
-	b.lineEnd = close == -1 ? n : close + 1;
-	if (close == -1) addDiag(ast, Diagnostic::Level::Error, "E002", start + 1, "unclosed formula block");
 
 	std::vector<std::pair<int, std::string>> content;
-	for (int j = start + 1; j < end; ++j) {
-		std::string t = trim(lines[j]);
-		if (t.empty()) continue;
-		if (t[0] == '#') { f.comments.emplace_back(j + 1, lines[j]); continue; }
-		content.emplace_back(j + 1, t);
+	bool closed = false;
+	int endLine = n - 1;
+
+	// обрабатывает строку li с офсета off; true => блок закрылся на этой строке
+	auto processLine = [&](int li, size_t off) -> bool {
+	const std::string& s = lines[li];
+	size_t i = off;
+	std::string acc;
+	while (i < s.size()) {
+		if (s.compare(i, 2, "$$") == 0) {
+			std::string t = trim(acc);
+			if (!t.empty()) content.emplace_back(li + 1, t);
+			endLine = li;
+			return true;
+		}
+		if (s[i] == '#') {
+			std::string t = trim(acc);
+			if (!t.empty()) content.emplace_back(li + 1, t);
+			size_t d = s.find("$$", i);
+			if (d == std::string::npos) { 
+				f.comments.emplace_back(li + 1, s.substr(i)); 
+				return false;  // <-- было break
+			}
+			f.comments.emplace_back(li + 1, s.substr(i, d - i));
+			endLine = li;
+			return true;
+		}
+		size_t h = s.find('#', i);
+		size_t d = s.find("$$", i);
+		size_t stop = s.size();
+		if (h != std::string::npos) stop = h;
+		if (d != std::string::npos && d < stop) stop = d;
+		acc += s.substr(i, stop - i);
+		i = stop;
+		}
+		std::string t = trim(acc);
+		if (!t.empty()) content.emplace_back(li + 1, t);
+		return false;
+	};
+
+	// открывающая строка: модификатор + возможно контент
+	{
+		const std::string& s = lines[start];
+		size_t i = 2;
+		while (i < s.size() && (s[i] == ' ' || s[i] == '\t')) ++i;
+		size_t j = i;
+		while (j < s.size() && s[j] != ' ' && s[j] != '\t') ++j;
+		std::string tok = s.substr(i, j - i);
+		if (tok == "hide" || tok == "!" || tok == "hide!") {
+			f.modifierRaw = tok;
+			if (tok != "!") f.hide = true;
+			if (tok != "hide") f.invertSubstitution = true;
+			closed = processLine(start, j);
+		} else if (!tok.empty() && trim(s.substr(j)).empty() &&
+				   tok.find_first_of("=#\\&") == std::string::npos) {
+			addDiag(ast, Diagnostic::Level::Error, "E003", start + 1, "unknown modifier: " + tok);
+		} else {
+			closed = processLine(start, i);
+		}
 	}
+
+	int next;
+	if (closed) next = endLine + 1;
+	else {
+		next = n;
+		for (int li = start + 1; li < n; ++li)
+			if (processLine(li, 0)) { closed = true; next = endLine + 1; break; }
+	}
+	if (!closed) {
+		addDiag(ast, Diagnostic::Level::Error, "E002", start + 1, "unclosed formula block");
+		endLine = n - 1;
+		next = n;
+	}
+	b.lineEnd = endLine + 1;
 
 	std::string expr;
 	for (size_t ci = 0; ci < content.size(); ++ci) {
 		std::string t = content[ci].second;
 		if (ci + 1 == content.size()) {
 			size_t amp = t.find('&');
-			if (amp != std::string::npos) {
-				f.unit = trim(t.substr(amp + 1));
-				t = trim(t.substr(0, amp));
-			}
+			if (amp != std::string::npos) { f.unit = trim(t.substr(amp + 1)); t = trim(t.substr(0, amp)); }
 		}
 		if (!t.empty()) { if (!expr.empty()) expr += ' '; expr += t; }
 	}
 	f.exprRaw = expr;
-	f.exprLine = content.empty() ? start + 2 : content.front().first;
+	f.exprLine = content.empty() ? start + 1 : content.front().first;
 
-	for (int j = start; j < b.lineEnd; ++j)
+	for (int j = start; j <= endLine && j < n; ++j)
 		b.raw += (b.raw.empty() ? "" : "\n") + lines[j];
 	ast.blocks.push_back(std::move(b));
-	return close == -1 ? n : close + 1;
+	return next;
 }
 
 void scanInlines(Block& b, const std::string& line, int lineNo, DocumentAst& ast) {
@@ -263,17 +328,15 @@ DocumentAst DocumentParser::parse(const std::string& source) const {
 			continue;
 		}
 
-		std::string mod;
-		if (isFormulaOpen(line, mod)) { i = parseFormula(lines, i, mod, ast); continue; }
+		if (isFormulaOpen(line)) { i = parseFormula(lines, i, ast); continue; }
 
 		Block b;
 		b.kind = BlockKind::Text;
 		const int start = i;
 		std::string raw;
-		while (i < n && !isEmpty(lines[i])) {
+				while (i < n && !isEmpty(lines[i])) {
 			if (headingLevel(lines[i])) break;
-			std::string m2;
-			if (isFormulaOpen(lines[i], m2)) break;
+			if (isFormulaOpen(lines[i])) break;
 			scanInlines(b, lines[i], i + 1, ast);
 			raw += (raw.empty() ? "" : "\n") + lines[i];
 			++i;
@@ -283,7 +346,7 @@ DocumentAst DocumentParser::parse(const std::string& source) const {
 		b.raw = raw;
 		b.text = raw;
 		ast.blocks.push_back(std::move(b));
-	}
+	}   // конец while (i < n)
 	return ast;
 }
 

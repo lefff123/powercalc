@@ -183,7 +183,7 @@ TEST(DocumentParser, InlineBad) {
 }
 
 TEST(DocumentParser, InlineNested) {
-	auto a = parse("$$R_{a_{b}}$$\n");
+	auto a = parse("Текст $$R_{a_{b}}$$ здесь\n");
 	EXPECT_EQ(count(a, "W001"), 1);
 }
 
@@ -191,4 +191,61 @@ TEST(DocumentParser, CollectsAllErrors) {
 	auto a = parse("$$foo\nx = 1\n$$\n\n$$bar\ny = 2\n");
 	EXPECT_EQ(count(a, "E003"), 2);
 	EXPECT_EQ(count(a, "E002"), 1);
+}
+
+TEST(DocumentParser, SingleLineFormula) {
+	auto a = parse("$$x = 1 # коммент$$\n");
+	const auto* f = first(a, BlockKind::Formula);
+	ASSERT_NE(f, nullptr);
+	EXPECT_EQ(f->formula.exprRaw, "x = 1");
+	EXPECT_EQ(f->formula.comments.size(), 1u);
+}
+
+TEST(DocumentParser, SingleLineUnit) {
+	auto a = parse("$$P = 100 & кВт$$\n");
+	const auto* f = first(a, BlockKind::Formula);
+	ASSERT_NE(f, nullptr);
+	EXPECT_EQ(f->formula.exprRaw, "P = 100");
+	EXPECT_EQ(f->formula.unit, "кВт");
+}
+
+TEST(DocumentParser, WholeLineInlineStillText) {
+	auto a = parse("$$U$$\n");
+	EXPECT_NE(first(a, BlockKind::Text), nullptr);
+	EXPECT_EQ(first(a, BlockKind::Formula), nullptr);
+}
+
+TEST(DocumentParser, OpeningLineContent) {
+	auto a = parse("$$ empty = 1 #dddsf\n$$\n");
+	const auto* f = first(a, BlockKind::Formula);
+	ASSERT_NE(f, nullptr);
+	EXPECT_EQ(f->formula.exprRaw, "empty = 1");
+	EXPECT_EQ(f->formula.comments.size(), 1u);
+	EXPECT_EQ(count(a, "E003"), 0);
+}
+
+TEST(DocumentParser, OpeningLineModifierAndContent) {
+	auto a = parse("$$hide x = 2\n$$\n");
+	const auto* f = first(a, BlockKind::Formula);
+	ASSERT_NE(f, nullptr);
+	EXPECT_TRUE(f->formula.hide);
+	EXPECT_EQ(f->formula.exprRaw, "x = 2");
+}
+
+TEST(DocumentParser, ClosingAtEndOfContentLine) {
+	auto a = parse("$$\nide = 1 #asdsa $$\n");
+	const auto* f = first(a, BlockKind::Formula);
+	ASSERT_NE(f, nullptr);
+	EXPECT_EQ(f->formula.exprRaw, "ide = 1");
+	EXPECT_EQ(f->formula.comments.size(), 1u);
+	EXPECT_EQ(count(a, "E002"), 0);
+	EXPECT_EQ(f->lineEnd, 2);
+}
+
+TEST(DocumentParser, BlockAfterInlineClose) {
+	auto a = parse("$$\nx = 1 $$\n\ntext after\n");
+	EXPECT_EQ(count(a, "E002"), 0);
+	const auto* t = first(a, BlockKind::Text);
+	ASSERT_NE(t, nullptr);
+	EXPECT_EQ(t->text, "text after");
 }

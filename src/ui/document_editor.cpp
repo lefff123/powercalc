@@ -2,6 +2,7 @@
 #include <QTextCursor>
 #include <QTextBlock>
 #include <QVBoxLayout>
+#include <algorithm>
 
 namespace powercalc::ui {
 
@@ -95,15 +96,22 @@ void DocumentEditor::reparse() {
 	QString text = m_edit->toPlainText();
 	std::string utf8 = text.toStdString();
 	m_ast = m_parser.parse(utf8);
-	
+
 	m_symbolTable.clear();
 	m_evalResult = evaluateDocument(m_ast, m_symbolTable);
-	
+
+	m_allDiags = m_ast.diagnostics;
+	m_allDiags.insert(m_allDiags.end(), m_evalResult.diagnostics.begin(), m_evalResult.diagnostics.end());
+	std::sort(m_allDiags.begin(), m_allDiags.end(),
+			  [](const powercalc::document::Diagnostic& a, const powercalc::document::Diagnostic& b) {
+				  return a.line < b.line;
+			  });
+
 	updateErrorHighlights();
 	updateErrorList();
-	
+
 	int errors = 0, warnings = 0;
-	for (const auto& d : m_evalResult.diagnostics) {
+	for (const auto& d : m_allDiags) {
 		if (d.level == powercalc::document::Diagnostic::Level::Error) ++errors;
 		else ++warnings;
 	}
@@ -113,8 +121,8 @@ void DocumentEditor::reparse() {
 
 void DocumentEditor::onErrorClicked(QListWidgetItem* item) {
 	int idx = m_errorList->row(item);
-	if (idx < 0 || idx >= static_cast<int>(m_evalResult.diagnostics.size())) return;
-	int line = m_evalResult.diagnostics[idx].line;
+	if (idx < 0 || idx >= static_cast<int>(m_allDiags.size())) return;
+	int line = m_allDiags[idx].line;
 	QTextBlock block = m_edit->document()->findBlockByNumber(line - 1);
 	if (block.isValid()) {
 		QTextCursor cursor(block);
@@ -125,16 +133,16 @@ void DocumentEditor::onErrorClicked(QListWidgetItem* item) {
 
 void DocumentEditor::updateErrorHighlights() {
 	QList<QTextEdit::ExtraSelection> extras;
-	for (const auto& diag : m_evalResult.diagnostics) {
-		if (diag.level != powercalc::document::Diagnostic::Level::Error) continue;
+	for (const auto& diag : m_allDiags) {
 		QTextBlock block = m_edit->document()->findBlockByNumber(diag.line - 1);
 		if (!block.isValid()) continue;
-		
 		QTextEdit::ExtraSelection sel;
 		sel.cursor = QTextCursor(block);
 		sel.cursor.select(QTextCursor::LineUnderCursor);
-		sel.format.setUnderlineColor(Qt::red);
 		sel.format.setUnderlineStyle(QTextCharFormat::WaveUnderline);
+		sel.format.setUnderlineColor(
+			diag.level == powercalc::document::Diagnostic::Level::Error
+				? Qt::red : QColor(255, 165, 0));
 		extras.append(sel);
 	}
 	m_edit->setExtraSelections(extras);
@@ -142,12 +150,12 @@ void DocumentEditor::updateErrorHighlights() {
 
 void DocumentEditor::updateErrorList() {
 	m_errorList->clear();
-	if (m_evalResult.diagnostics.empty()) {
+	if (m_allDiags.empty()) {
 		m_errorList->setVisible(false);
 		return;
 	}
 	m_errorList->setVisible(true);
-	for (const auto& diag : m_evalResult.diagnostics) {
+	for (const auto& diag : m_allDiags) {
 		QString item = QString("%1 — %2 — %3")
 			.arg(diag.line)
 			.arg(QString::fromStdString(diag.code))
