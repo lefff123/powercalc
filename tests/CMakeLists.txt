@@ -25,6 +25,9 @@ add_executable(matrix_tests
 	test_document_parser.cpp
 	test_expr_evaluator.cpp
 	test_document_perf.cpp
+	test_number_format.cpp
+	test_substitution.cpp
+	test_html_generator.cpp
 )
 # Линкуем с gtest и нашей библиотекой
 target_link_libraries(matrix_tests PRIVATE 

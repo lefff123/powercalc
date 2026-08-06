@@ -116,6 +116,7 @@ struct Parser {
 	size_t p = 0;
 	int line;
 	std::vector<Diagnostic>& diags;
+	bool emptyRhs = false;
 
 	const Token& cur() const { return tk[p]; }
 	bool opIs(const std::string& o) const { return tk[p].kind == Token::Kind::Op && tk[p].text == o; }
@@ -134,6 +135,7 @@ struct Parser {
 			ExprPtr right;
 			if (cur().kind == Token::Kind::End) {
 				diags.push_back({Diagnostic::Level::Warning, "W001", line, "empty right-hand side"});
+				emptyRhs = true;
 				right = mk(ExprKind::Error);
 			} else {
 				right = parseExpr();
@@ -279,6 +281,7 @@ ParsedFormula parseFormulaExpr(const std::string& src, int line) {
 	}
 	Parser pr{tokens, 0, line, res.diagnostics};
 	res.tree = pr.parseAssign(res.lhs);
+	res.emptyRhs = pr.emptyRhs;
 	return res;
 }
 

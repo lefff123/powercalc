@@ -15,13 +15,15 @@ struct Diagnostic {
 };
 
 struct InlineRef {
-	std::string name;   // нормализованное имя
+	std::string name;   // нормализованное имя (пусто => symbolic)
 	int line = 0;
-	int col = 0;        // 1-based, байтовый
-	int length = 0;     // длина вместе с $$
+	int col = 0;
+	int length = 0;
+	bool symbolic = false; // $$выражение$$ -> рендер как LaTeX inline
+	std::string raw;
 };
 
-enum class BlockKind { Yaml, Heading, Formula, Text };
+enum class BlockKind { Yaml, Heading, Formula, Text, List, Table, Image };
 
 // --- дерево выражения 
 enum class ExprKind { Number, Variable, Constant, Binary, Unary, Call, Frac, Error };
@@ -46,6 +48,26 @@ struct FormulaInfo {
 	int exprLine = 0;      // строка первого выражения
 };
 
+struct ListItem {
+	int level = 0;        // 0..2 (отступ 2 пробела на уровень)
+	bool ordered = false; // "1. " vs "- "
+	int line = 0;
+	std::string text;
+	std::vector<InlineRef> inlines;
+};
+
+struct TableCell {
+	std::string text;
+	std::vector<InlineRef> inlines; // col — относительно текста ячейки
+	char align = 0;                 // 0 / 'l' / 'c' / 'r'
+};
+
+struct TableRow {
+	int line = 0;
+	bool header = false;
+	std::vector<TableCell> cells;
+};
+
 struct Block {
 	BlockKind kind = BlockKind::Text;
 	int lineBegin = 0, lineEnd = 0;   // 1-based, включительно
@@ -54,6 +76,16 @@ struct Block {
 	std::string text;     // Heading/Text
 	FormulaInfo formula;
 	std::vector<InlineRef> inlines;
+	// List
+	std::vector<ListItem> items;
+	// Table
+	std::vector<TableRow> rows;
+	// Image
+	std::string imageAlt;
+	std::string imageName;  // имя файла, лежит в images/
+	// локальные стили (суффикс {…} первой строки блока)
+	std::string localAlign; // "", left/center/right/justify
+	std::string localSize;  // "", например "12pt"
 };
 
 struct DocumentMeta {

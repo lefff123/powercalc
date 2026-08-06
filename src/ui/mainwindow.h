@@ -4,6 +4,7 @@
 #include <QTableView>
 namespace powercalc::ui {
 class DocumentEditor;
+class DocumentView;
 }
 
 class QTabWidget;
@@ -12,6 +13,8 @@ class QToolBar;
 class PowerSystem;
 class NodeTableModel;
 class LineTableModel;
+class QSplitter;
+class QAction;
 
 class MainWindow : public QMainWindow
 {
@@ -25,6 +28,9 @@ private:
 	void createMenusAndToolbars();
 	void applyTabContext(int index);
 	void applyParsedSystem(class CsvParser &parser);
+
+	void ensureDocView();
+	void refreshPreview();
 
 	QTabWidget *m_mainTabs = nullptr;   // Документ | Таблицы | Графика
 	QTabWidget *m_tableTabs = nullptr;  // Узлы | Ветви
@@ -48,6 +54,10 @@ private:
 
 	PowerSystem &m_system;
 
+	QSplitter *m_docSplitter = nullptr;
+	powercalc::ui::DocumentView *m_docView = nullptr;
+	QAction *m_previewAct = nullptr;
+
 	powercalc::ui::DocumentEditor* m_docEditor = nullptr;
 	QString m_documentLineEndings = "\n"; 
 
@@ -65,4 +75,6 @@ private slots:
 	void onAddNode();
 	void onDeleteLine();
 	void onDeleteNode();
+	void onExportHtml();
+	void onExportPdf();
 };

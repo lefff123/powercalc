@@ -21,6 +21,8 @@ public:
 
 	QString text() const;
 	void setText(const QString& text);
+	const powercalc::document::DocumentAst& ast() const { return m_ast; }
+	const powercalc::document::EvaluationResult& evalResult() const { return m_evalResult; }
 
 signals:
 	void documentChanged();

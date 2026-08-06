@@ -14,6 +14,7 @@ using ValueProvider = std::function<std::optional<Value>(const std::string&)>;
 struct ParsedFormula {
 	ExprPtr tree;
 	std::string lhs;   // нормализованное имя; пусто => не присваивание
+	bool emptyRhs = false; // "u =" без правой части
 	std::vector<Diagnostic> diagnostics;
 };
 

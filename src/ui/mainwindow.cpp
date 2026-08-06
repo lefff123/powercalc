@@ -4,6 +4,9 @@
 #include "tabledelegate.h"
 #include "api.h"
 #include "document_editor.h"
+#include "document_view.h"
+#include "html_generator.h"
+
 
 #include <QLabel>
 #include <QMenu>
@@ -22,6 +25,11 @@
 #include <QClipboard>
 #include <QApplication>
 #include <QMimeData>
+#include <QSplitter>
+#include <QPageLayout>
+#include <QPageSize>
+#include <QDir>
+#include <QFileInfo>
 
 using powercalc::ui::DocumentEditor;
 
@@ -41,7 +49,9 @@ void MainWindow::createTabs()
 	m_mainTabs = new QTabWidget(this);
 
 	m_docEditor = new DocumentEditor(this);
-	m_mainTabs->addTab(m_docEditor, "Документ");
+	m_docSplitter = new QSplitter(Qt::Horizontal, this);
+	m_docSplitter->addWidget(m_docEditor);
+	m_mainTabs->addTab(m_docSplitter, "Документ");
 
 	connect(m_docEditor, &DocumentEditor::diagnosticCountChanged, this, [this](int err, int warn) {
 		if (err == 0 && warn == 0) {
@@ -93,6 +103,10 @@ void MainWindow::createMenusAndToolbars()
 
 	QAction *exportAction = m_fileMenu->addAction("Экспорт в RastrWin...");
 	connect(exportAction, &QAction::triggered, this, &MainWindow::onExportRastrWin);
+
+	m_fileMenu->addAction("Экспорт HTML…", this, &MainWindow::onExportHtml);
+	m_fileMenu->addAction("Экспорт PDF…", this, &MainWindow::onExportPdf);
+
 	m_fileMenu->addSeparator();
 	m_fileMenu->addAction("Выход", this, &QWidget::close);
 
@@ -110,6 +124,26 @@ void MainWindow::createMenusAndToolbars()
 	connect(redoAction, &QAction::triggered, this, [this]() {
 		if (m_docEditor && m_mainTabs->currentIndex() == 0) {
 			m_docEditor->findChild<QTextEdit*>()->redo();
+		}
+	});
+
+	m_docEditMenu->addSeparator();
+	m_previewAct = m_docEditMenu->addAction("Превью");
+	m_previewAct->setCheckable(true);
+	m_previewAct->setChecked(true);
+	ensureDocView();
+	m_docView->setVisible(true);
+	connect(m_previewAct, &QAction::triggered, this, [this](bool on) {
+		if (on) ensureDocView();
+		if (m_docView) {
+			m_docView->setVisible(on);
+			if (on) {
+				const int half = m_docSplitter->width() / 2;
+				m_docSplitter->setSizes({half, half});
+				refreshPreview();
+			} else {
+				m_docSplitter->setSizes({m_docSplitter->width(), 0});
+			}
 		}
 	});
 
@@ -553,4 +587,79 @@ void MainWindow::onAddLine()
 		m_lineTable->scrollTo(m_lineModel->index(lastRow, 0));
 	}
 	statusBar()->showMessage("Ветвь добавлена");
+}
+
+static double toMm(const std::string& s) {
+	double v = std::atof(s.c_str());
+	return s.size() > 2 && s.compare(s.size() - 2, 2, "cm") == 0 ? v * 10.0 : v;
+}
+
+void MainWindow::ensureDocView()
+{
+	if (m_docView) return;
+	m_docView = new powercalc::ui::DocumentView(m_docSplitter);
+	m_docSplitter->addWidget(m_docView);
+	m_docSplitter->setStretchFactor(0, 1);
+	m_docSplitter->setStretchFactor(1, 1);
+	// стартовый размер 50/50
+	const int half = m_docSplitter->width() / 2;
+	m_docSplitter->setSizes({half, half});
+	connect(m_docEditor, &DocumentEditor::documentChanged, this, &MainWindow::refreshPreview);
+	refreshPreview();
+}
+void MainWindow::refreshPreview()
+{
+	if (!m_docView) return;
+	powercalc::document::HtmlOptions o;
+	m_docView->showHtml(QString::fromStdString(
+		powercalc::document::generateHtml(m_docEditor->ast(), m_docEditor->evalResult(), o)));
+}
+
+void MainWindow::onExportHtml()
+{
+	const QString path = QFileDialog::getSaveFileName(this, "Экспорт HTML", "report.html", "HTML (*.html)");
+	if (path.isEmpty()) return;
+	powercalc::document::HtmlOptions o;
+	o.assetPrefix = "katex/";
+	o.exportMode = true;
+	const std::string html = powercalc::document::generateHtml(m_docEditor->ast(), m_docEditor->evalResult(), o);
+	QFile f(path);
+	f.open(QIODevice::WriteOnly);
+	f.write(QByteArray::fromStdString(html));
+	f.close();
+
+	const QString base = QFileInfo(path).absolutePath() + "/katex";
+	QDir().mkpath(base + "/fonts");
+	QDir().mkpath(base + "/contrib");
+	auto copy = [](const QString& q, const QString& d) { QFile::remove(d); QFile::copy(q, d); };
+	copy(":/katex/katex.min.css", base + "/katex.min.css");
+	copy(":/katex/katex.min.js", base + "/katex.min.js");
+	copy(":/katex/contrib/auto-render.min.js", base + "/contrib/auto-render.min.js");
+	for (const QString& fn : QDir(":/katex/fonts").entryList({"*.woff2"}, QDir::Files))
+		copy(":/katex/fonts/" + fn, base + "/fonts/" + fn);
+	statusBar()->showMessage("Экспортировано: " + path);
+}
+
+void MainWindow::onExportPdf()
+{
+	const QString path = QFileDialog::getSaveFileName(this, "Экспорт PDF", "report.pdf", "PDF (*.pdf)");
+	if (path.isEmpty()) return;
+
+	ensureDocView();
+
+	const auto& m = m_docEditor->ast().meta;
+	QPageSize ps(QPageSize::A4);
+	if (m.pageSize == "A3") ps = QPageSize(QPageSize::A3);
+	else if (m.pageSize == "A5") ps = QPageSize(QPageSize::A5);
+	else if (m.pageSize == "Letter") ps = QPageSize(QPageSize::Letter);
+	const QPageLayout layout(ps, QPageLayout::Portrait,
+		QMarginsF(toMm(m.marginLeft), toMm(m.marginTop), toMm(m.marginRight), toMm(m.marginBottom)));
+
+	// Односрабатывающий коннект (Qt 5.15+)
+	connect(m_docView, &QWebEngineView::loadFinished, this, [this, path, layout]() {
+		m_docView->page()->printToPdf(path, layout);
+		statusBar()->showMessage("PDF сохранён: " + path);
+	}, Qt::SingleShotConnection);
+
+	refreshPreview(); // setHtml -> loadFinished -> printToPdf
 }

@@ -165,9 +165,11 @@ TEST(DocumentParser, Inlines) {
 	const auto* t = first(a, BlockKind::Text);
 	ASSERT_NE(t, nullptr);
 	ASSERT_EQ(t->inlines.size(), 2u);
-	EXPECT_EQ(t->inlines[0].name, "U_{1}");
+	EXPECT_TRUE(t->inlines[0].symbolic);
+	EXPECT_EQ(t->inlines[0].raw, "U_1");
 	EXPECT_EQ(t->inlines[0].line, 1);
-	EXPECT_EQ(t->inlines[1].name, "Ток");
+	EXPECT_TRUE(t->inlines[1].symbolic);
+	EXPECT_EQ(t->inlines[1].raw, "Ток");
 }
 
 TEST(DocumentParser, InlineNormalization) {
@@ -179,12 +181,21 @@ TEST(DocumentParser, InlineNormalization) {
 
 TEST(DocumentParser, InlineBad) {
 	auto a = parse("x $$a+b$$ y\n");
-	EXPECT_EQ(count(a, "W001"), 1);
+	// В v1.2: $$a+b$$ — это symbolic inline (LaTeX), не ошибка
+	EXPECT_EQ(count(a, "W001"), 0);
+	// Проверим, что inline попал в блок
+	EXPECT_EQ(a.blocks.size(), 1u);
+	EXPECT_EQ(a.blocks[0].inlines.size(), 1u);
+	EXPECT_TRUE(a.blocks[0].inlines[0].symbolic);
 }
 
 TEST(DocumentParser, InlineNested) {
 	auto a = parse("Текст $$R_{a_{b}}$$ здесь\n");
-	EXPECT_EQ(count(a, "W001"), 1);
+	// В v1.2: вложенный индекс — это symbolic inline (LaTeX), не ошибка
+	EXPECT_EQ(count(a, "W001"), 0);
+	EXPECT_EQ(a.blocks.size(), 1u);
+	EXPECT_EQ(a.blocks[0].inlines.size(), 1u);
+	EXPECT_TRUE(a.blocks[0].inlines[0].symbolic);
 }
 
 TEST(DocumentParser, CollectsAllErrors) {

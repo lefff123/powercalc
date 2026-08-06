@@ -233,7 +233,7 @@ int parseFormula(const std::vector<std::string>& lines, int start, DocumentAst& 
 		size_t i = 2;
 		while (i < s.size() && (s[i] == ' ' || s[i] == '\t')) ++i;
 		size_t j = i;
-		while (j < s.size() && s[j] != ' ' && s[j] != '\t') ++j;
+		while (j < s.size() && s[j] != ' ' && s[j] != '\t' && s[j] != '$') ++j;
 		std::string tok = s.substr(i, j - i);
 		if (tok == "hide" || tok == "!" || tok == "hide!") {
 			f.modifierRaw = tok;
@@ -286,13 +286,18 @@ void scanInlines(Block& b, const std::string& line, int lineNo, DocumentAst& ast
 		size_t close = line.find("$$", p + 2);
 		if (close == std::string::npos) break;
 		std::string content = trim(line.substr(p + 2, close - p - 2));
-		size_t i = 0;
-		if (!content.empty() && content[0] == '\\') i = 1;
-		auto ns = utf8::readVariable(content, i);
-		if (ns.ok && i == content.size())
-			b.inlines.push_back({ns.normalized, lineNo, static_cast<int>(p) + 1, static_cast<int>(close - p) + 2});
-		else
+		if (content.empty()) {
 			addDiag(ast, Diagnostic::Level::Warning, "W001", lineNo, "bad inline formula: " + content);
+			p = close + 2;
+			continue;
+		}
+		InlineRef ref;
+		ref.line = lineNo;
+		ref.col = static_cast<int>(p) + 1;
+		ref.length = static_cast<int>(close - p) + 2;
+		ref.symbolic = true;
+		ref.raw = content;
+		b.inlines.push_back(ref);
 		p = close + 2;
 	}
 }

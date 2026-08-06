@@ -1,7 +1,87 @@
 #include "document_evaluator.h"
 #include "expr_evaluator.h"
+#include "number_format.h"
 
 namespace powercalc::document {
+
+int prec(const Expr& e) {
+	if (e.kind == ExprKind::Binary) {
+		if (e.op == '+' || e.op == '-') return 1;
+		if (e.op == '*' || e.op == '/') return 2;
+		if (e.op == '^') return 3;
+	}
+	return 4;
+}
+
+bool subLatex(const Expr& e, const ValueProvider& get, std::string& out);
+
+bool subChild(const Expr& c, const Expr& p, bool right, const ValueProvider& get, std::string& out) {
+	std::string s;
+	if (!subLatex(c, get, s)) return false;
+	if (p.kind == ExprKind::Binary) {
+		const int pp = prec(p), pc = prec(c);
+		bool paren = false;
+		if (p.op == '+' || p.op == '-') paren = pc < pp || (right && pc == pp);
+		else if (p.op == '*')           paren = pc < pp;
+		else if (p.op == '^' && !right) paren = pc < pp; // экспонента всегда в ^{...}
+		if (paren) { out += "(" + s + ")"; return true; }
+	}
+	out += s;
+	return true;
+}
+
+bool subLatex(const Expr& e, const ValueProvider& get, std::string& out) {
+	switch (e.kind) {
+	case ExprKind::Number: out += formatReal(e.value); return true;
+	case ExprKind::Constant:
+		out += (e.name == "pi") ? std::string("\\pi") : e.name; // e, j как есть
+		return true;
+	case ExprKind::Variable: {
+		auto v = get(e.name);
+		if (!v) return false;
+		std::string s = formatValue(*v);
+		if (std::fabs(v->imag()) >= 1e-9 || v->real() < 0) s = "(" + s + ")";
+		out += s;
+		return true;
+	}
+	case ExprKind::Unary: {
+		out += "-";
+		if (e.args[0]->kind == ExprKind::Binary) {
+			std::string s; if (!subLatex(*e.args[0], get, s)) return false;
+			out += "(" + s + ")"; return true;
+		}
+		return subLatex(*e.args[0], get, out);
+	}
+	case ExprKind::Binary: {
+		if (e.op == '/') { // \frac{a}{b} — скобки не нужны
+			std::string a, b;
+			if (!subLatex(*e.args[0], get, a) || !subLatex(*e.args[1], get, b)) return false;
+			out += "\\frac{" + a + "}{" + b + "}"; return true;
+		}
+		if (e.op == '^') {
+			std::string a, b;
+			if (!subChild(*e.args[0], e, false, get, a) || !subLatex(*e.args[1], get, b)) return false;
+			out += a + "^{" + b + "}"; return true;
+		}
+		std::string a, b;
+		if (!subChild(*e.args[0], e, false, get, a)) return false;
+		out += a;
+		out += (e.op == '*') ? " \\cdot " : std::string(" ") + e.op + " ";
+		return subChild(*e.args[1], e, true, get, out);
+	}
+	case ExprKind::Frac: {
+		std::string a, b;
+		if (!subLatex(*e.args[0], get, a) || !subLatex(*e.args[1], get, b)) return false;
+		out += "\\frac{" + a + "}{" + b + "}"; return true;
+	}
+	case ExprKind::Call: {
+		std::string a;
+		if (!subLatex(*e.args[0], get, a)) return false;
+		out += "\\" + e.name + "{" + a + "}"; return true;
+	}
+	default: return false;
+	}
+}
 
 EvaluationResult evaluateDocument(const DocumentAst& ast, SymbolTable& st) {
 	EvaluationResult res;
@@ -15,6 +95,22 @@ EvaluationResult evaluateDocument(const DocumentAst& ast, SymbolTable& st) {
 
 			auto val = evaluate(*pf.tree, provider, res.diagnostics);
 
+			BlockEvalResult br;
+			br.block = &b;
+			br.lhs = pf.lhs;
+			br.emptyRhs = pf.emptyRhs;
+			if (!pf.lhs.empty() && val.has_value()) {
+				br.value = *val;
+				// подстановка только если справа реально есть вычисление
+				if (pf.tree->kind != ExprKind::Number &&
+					pf.tree->kind != ExprKind::Variable &&
+					pf.tree->kind != ExprKind::Constant) {
+					std::string s;
+					if (subLatex(*pf.tree, provider, s)) br.substitutedLatex = s; // ДО define
+				}
+			}
+			res.blocks.push_back(std::move(br));
+
 			if (!pf.lhs.empty()) {
 				if (isReservedName(pf.lhs)) continue;   // E007 уже в диагностикаx
 				if (val.has_value()) {
@@ -26,8 +122,9 @@ EvaluationResult evaluateDocument(const DocumentAst& ast, SymbolTable& st) {
 			continue;
 		}
 
-		if (b.kind == BlockKind::Text) {
+				if (b.kind == BlockKind::Text) {
 			for (const auto& ref : b.inlines) {
+				if (ref.symbolic) continue;
 				if (!st.lookup(ref.name)) {
 					res.diagnostics.push_back({Diagnostic::Level::Error, "E005",
 						ref.line, "undefined variable " + ref.name});
@@ -37,5 +134,4 @@ EvaluationResult evaluateDocument(const DocumentAst& ast, SymbolTable& st) {
 	}
 	return res;
 }
-
 } // namespace powercalc::document
