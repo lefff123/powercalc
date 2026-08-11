@@ -6,6 +6,7 @@
 #include "document_editor.h"
 #include "document_view.h"
 #include "html_generator.h"
+#include "image_scheme_handler.h"
 
 
 #include <QLabel>
@@ -30,6 +31,12 @@
 #include <QPageSize>
 #include <QDir>
 #include <QFileInfo>
+#include <QWebEngineProfile>
+#include <QFileSystemWatcher>
+#include <QDateTime>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+
 
 using powercalc::ui::DocumentEditor;
 
@@ -38,6 +45,14 @@ MainWindow::MainWindow(PowerSystem &system, QWidget *parent) : QMainWindow(paren
 	resize(1200, 800);
 	createTabs();
 	createMenusAndToolbars();
+	m_imgHandler = new powercalc::ui::ImageSchemeHandler(this);
+	QWebEngineProfile::defaultProfile()->installUrlSchemeHandler("pcimg", m_imgHandler);
+	m_watcher = new QFileSystemWatcher(this);
+	connect(m_watcher, &QFileSystemWatcher::directoryChanged, this, [this](const QString& dir) {
+		if (!m_watcher->directories().contains(dir)) m_watcher->addPath(dir);
+		refreshPreview();
+	});
+	setupProjectDir();
 	statusBar()->showMessage("Готов");
 	statusBar()->setStyleSheet("font-size: 11px;");
 	statusBar()->setContentsMargins(6, 0, 6, 0);
@@ -59,6 +74,56 @@ void MainWindow::createTabs()
 		} else {
 			statusBar()->showMessage(QString("Документ: %1 ошибок, %2 предупреждений").arg(err).arg(warn));
 		}
+	});
+
+	connect(m_docEditor, &DocumentEditor::imageDropRequested, this, [this](const QStringList& paths) {
+	for (const QString& src : paths) {
+		const QString name = QFileInfo(src).fileName();
+		const QString dst = m_projectDir.path() + "/images/" + name;
+		QFile::remove(dst);
+		if (!QFile::copy(src, dst)) {
+			QMessageBox::warning(this, "Картинка", "Не удалось скопировать: " + name);
+			continue;
+		}
+		m_docEditor->insertAtCursor(QString("![%1](%1)").arg(name));
+	}
+	});
+
+	connect(m_docEditor, &DocumentEditor::imageDataDropped, this, [this](const QByteArray& png) {
+		const QString name = "drop_" + QString::number(QDateTime::currentMSecsSinceEpoch()) + ".png";
+		QFile f(m_projectDir.path() + "/images/" + name);
+		if (!f.open(QIODevice::WriteOnly)) return;
+		f.write(png);
+		f.close();
+		m_docEditor->insertAtCursor(QString("![%1](%1)").arg(name));
+	});
+
+	connect(m_docEditor, &DocumentEditor::urlDropRequested, this, [this](const QStringList& urls) {
+	for (const QString& us : urls) {
+		const QUrl u(us);
+		auto* nam = new QNetworkAccessManager(this);
+		QNetworkReply* reply = nam->get(QNetworkRequest(u));
+		connect(reply, &QNetworkReply::finished, this, [this, reply, nam, u]() {
+			reply->deleteLater();
+			nam->deleteLater();
+			if (reply->error() != QNetworkReply::NoError) {
+				QMessageBox::warning(this, "Картинка", "Не удалось скачать: " + u.toString());
+				return;
+			}
+			const QByteArray data = reply->readAll();
+			const QString mime = reply->header(QNetworkRequest::ContentTypeHeader).toString();
+			QString ext = "png";
+			if (mime.contains("jpeg")) ext = "jpg";
+			else if (mime.contains("svg")) ext = "svg";
+			else if (mime.contains("webp")) ext = "webp";
+			const QString name = "web_" + QString::number(QDateTime::currentMSecsSinceEpoch()) + "." + ext;
+			QFile f(m_projectDir.path() + "/images/" + name);
+			if (!f.open(QIODevice::WriteOnly)) return;
+			f.write(data);
+			f.close();
+			m_docEditor->insertAtCursor(QString("![%1](%1)").arg(name));
+		});
+	}
 	});
 
 	m_tableTabs = new QTabWidget(this);
@@ -127,6 +192,9 @@ void MainWindow::createMenusAndToolbars()
 		}
 	});
 
+	m_insertMenu = menuBar()->addMenu("Вставка");
+	m_insertMenu->addAction("Картинка…", this, &MainWindow::onInsertImage);
+
 	m_docEditMenu->addSeparator();
 	m_previewAct = m_docEditMenu->addAction("Превью");
 	m_previewAct->setCheckable(true);
@@ -190,6 +258,7 @@ void MainWindow::applyTabContext(int index)
 	m_tablesEditMenu->menuAction()->setVisible(isTables);
 	m_calcMenu->menuAction()->setVisible(isTables);
 	m_graphViewMenu->menuAction()->setVisible(isGraph);
+	m_insertMenu->menuAction()->setVisible(isDoc);
 }
 
 void MainWindow::onImportRastrWin()
@@ -311,6 +380,7 @@ void MainWindow::onExportRastrWin()
 
 void MainWindow::onNewProject()
 {
+	setupProjectDir();
 	m_system.clear();
 	m_nodeModel->setNames({});
 	m_lineModel->setNames({});
@@ -343,22 +413,19 @@ void MainWindow::onSaveProject()
 	docFile.close();
 
 	QuaZip zip(path);
-	if (!zip.open(QuaZip::mdCreate)) {
-		QMessageBox::warning(this, "Проект", "Не удалось создать архив");
-		return;
-	}
-	for (const QString &file : {np, bp, dp}) {
+	if (!zip.open(QuaZip::mdCreate)) { QMessageBox::warning(this, "Проект", "Не удалось создать архив"); return; }
+	auto addFile = [&](const QString& file, const QString& zipName) {
 		QuaZipFile out(&zip);
-		if (!out.open(QIODevice::WriteOnly, QuaZipNewInfo(QFileInfo(file).fileName(), file))) {
-			zip.close();
-			QMessageBox::warning(this, "Проект", "Ошибка записи в архив");
-			return;
+		if (!out.open(QIODevice::WriteOnly, QuaZipNewInfo(zipName, file))) {
+			zip.close(); QMessageBox::warning(this, "Проект", "Ошибка записи в архив"); return;
 		}
-		QFile in(file);
-		in.open(QIODevice::ReadOnly);
-		out.write(in.readAll());
-		out.close();
-	}
+		QFile in(file); in.open(QIODevice::ReadOnly); out.write(in.readAll()); out.close();
+	};
+	addFile(np, "nodes.csv");
+	addFile(bp, "branches.csv");
+	addFile(dp, "document.txt");
+	for (const QFileInfo& fi : QDir(m_projectDir.path() + "/images").entryInfoList(QDir::Files))
+		addFile(fi.absoluteFilePath(), "images/" + fi.fileName());
 	zip.close();
 	statusBar()->showMessage("Проект сохранён: " + path);
 }
@@ -375,6 +442,7 @@ void MainWindow::onOpenProject()
 	}
 
 	QTemporaryDir tmp;
+	setupProjectDir();
 	QString np, bp, dp;
 	for (bool more = zip.goToFirstFile(); more; more = zip.goToNextFile()) {
 		const QString name = zip.getCurrentFileName();
@@ -384,9 +452,13 @@ void MainWindow::onOpenProject()
 		in.close();
 
 		QString target;
-		if (name.endsWith("nodes.csv")) target = np = tmp.path() + "/nodes.csv";
-		else if (name.endsWith("branches.csv")) target = bp = tmp.path() + "/branches.csv";
-		else if (name.endsWith("document.txt")) target = dp = tmp.path() + "/document.txt";
+		if (name.endsWith("nodes.csv")) target = np = m_projectDir.path() + "/nodes.csv";
+		else if (name.endsWith("branches.csv")) target = bp = m_projectDir.path() + "/branches.csv";
+		else if (name.endsWith("document.txt")) target = dp = m_projectDir.path() + "/document.txt";
+		else if (name.startsWith("images/")) {
+			target = m_projectDir.path() + "/" + name;
+			QDir().mkpath(QFileInfo(target).absolutePath());
+		}
 		else continue;
 
 		QFile out(target);
@@ -607,10 +679,16 @@ void MainWindow::ensureDocView()
 	connect(m_docEditor, &DocumentEditor::documentChanged, this, &MainWindow::refreshPreview);
 	refreshPreview();
 }
+
 void MainWindow::refreshPreview()
 {
 	if (!m_docView) return;
 	powercalc::document::HtmlOptions o;
+	o.imageResolver = [this](const std::string& n) -> std::string {
+		QFileInfo fi(m_projectDir.path() + "/images/" + QString::fromStdString(n));
+		if (!fi.exists()) return "";
+		return ("pcimg://" + fi.fileName() + "?v=" + QString::number(fi.lastModified().toMSecsSinceEpoch())).toStdString();
+	};
 	m_docView->showHtml(QString::fromStdString(
 		powercalc::document::generateHtml(m_docEditor->ast(), m_docEditor->evalResult(), o)));
 }
@@ -622,6 +700,17 @@ void MainWindow::onExportHtml()
 	powercalc::document::HtmlOptions o;
 	o.assetPrefix = "katex/";
 	o.exportMode = true;
+
+	o.imageResolver = [this](const std::string& n) -> std::string {
+	const QString name = QString::fromStdString(n);
+	QFile f(m_projectDir.path() + "/images/" + name);
+	if (!f.open(QIODevice::ReadOnly)) return "";
+	QString mime = "image/png";
+	if (name.endsWith(".svg", Qt::CaseInsensitive)) mime = "image/svg+xml";
+	else if (name.endsWith(".jpg", Qt::CaseInsensitive) || name.endsWith(".jpeg", Qt::CaseInsensitive)) mime = "image/jpeg";
+	return ("data:" + mime + ";base64," + QString::fromLatin1(f.readAll().toBase64())).toStdString();
+	};
+
 	const std::string html = powercalc::document::generateHtml(m_docEditor->ast(), m_docEditor->evalResult(), o);
 	QFile f(path);
 	f.open(QIODevice::WriteOnly);
@@ -662,4 +751,25 @@ void MainWindow::onExportPdf()
 	}, Qt::SingleShotConnection);
 
 	refreshPreview(); // setHtml -> loadFinished -> printToPdf
+}
+
+void MainWindow::setupProjectDir()
+{
+	m_projectDir = QTemporaryDir();
+	const QString img = m_projectDir.path() + "/images";
+	QDir().mkpath(img);
+	m_imgHandler->setImagesDir(img);
+	for (const QString& d : m_watcher->directories()) m_watcher->removePath(d);
+	m_watcher->addPath(img);
+}
+
+void MainWindow::onInsertImage()
+{
+	const QString src = QFileDialog::getOpenFileName(this, "Выберите картинку", "", "Images (*.png *.jpg *.jpeg *.svg)");
+	if (src.isEmpty()) return;
+	const QString name = QFileInfo(src).fileName();
+	const QString dst = m_projectDir.path() + "/images/" + name;
+	QFile::remove(dst);
+	if (!QFile::copy(src, dst)) { QMessageBox::warning(this, "Картинка", "Не удалось скопировать файл"); return; }
+	m_docEditor->insertAtCursor(QString("![%1](%1)").arg(name));
 }

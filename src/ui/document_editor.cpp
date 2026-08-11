@@ -3,6 +3,17 @@
 #include <QTextBlock>
 #include <QVBoxLayout>
 #include <algorithm>
+#include <QDragEnterEvent>
+#include <QDragMoveEvent>
+#include <QDropEvent>
+#include <QMimeData>
+#include <QBuffer>
+#include <QImage>
+#include <QKeyEvent>
+#include <QKeySequence>
+#include <QApplication>
+#include <QClipboard>
+#include <QFile>
 
 namespace powercalc::ui {
 
@@ -12,6 +23,7 @@ DocumentEditor::DocumentEditor(QWidget* parent)
 	m_edit = new QTextEdit(this);
 	m_edit->setAcceptRichText(false);
 	m_edit->setFont(QFont("Courier New", 10));
+	m_edit->installEventFilter(this);
 	
 	m_errorList = new QListWidget(this);
 	m_errorList->setVisible(false);
@@ -30,6 +42,12 @@ DocumentEditor::DocumentEditor(QWidget* parent)
 	});
 	
 	connect(m_errorList, &QListWidget::itemClicked, this, &DocumentEditor::onErrorClicked);
+
+	m_edit->setAcceptDrops(true);
+}
+
+void DocumentEditor::insertAtCursor(const QString& text) {
+	m_edit->insertPlainText(text);
 }
 
 QString DocumentEditor::text() const {
@@ -164,4 +182,89 @@ void DocumentEditor::updateErrorList() {
 	}
 }
 
+static bool hasLocalImage(const QMimeData* md) {
+	if (!md->hasUrls()) return false;
+	for (const QUrl& u : md->urls()) {
+		if (!u.isLocalFile()) return false;
+		const QString f = u.toLocalFile().toLower();
+		if (!(f.endsWith(".png") || f.endsWith(".jpg") || f.endsWith(".jpeg") || f.endsWith(".svg")))
+			return false;
+	}
+	return true;
+}
+
+static bool looksLikeImage(const QString& path) {
+	const QString f = path.toLower();
+	if (f.endsWith(".png") || f.endsWith(".jpg") || f.endsWith(".jpeg") || f.endsWith(".svg") ||
+		f.endsWith(".webp") || f.endsWith(".gif") || f.endsWith(".bmp")) return true;
+	QFile file(path);
+	if (!file.open(QIODevice::ReadOnly)) return false;
+	const QByteArray h = file.read(12);
+	return h.startsWith("\x89PNG") || h.startsWith("\xff\xd8") || h.startsWith("GIF8") ||
+		   h.startsWith("BM") || h.contains("<svg") || h.contains("<?xml") ||
+		   (h.startsWith("RIFF") && h.mid(8, 4) == "WEBP");
+}
+
+bool DocumentEditor::eventFilter(QObject* o, QEvent* e)
+{
+	if (o == m_edit) {
+		// Ctrl+V со скриншотом в буфере
+		if (e->type() == QEvent::KeyPress) {
+			auto* ke = static_cast<QKeyEvent*>(e);
+			if (ke->matches(QKeySequence::Paste)) {
+				const QMimeData* md = QApplication::clipboard()->mimeData();
+				if (md->hasImage()) {
+					QImage img = qvariant_cast<QImage>(md->imageData());
+					QByteArray ba;
+					QBuffer buf(&ba);
+					buf.open(QIODevice::WriteOnly);
+					img.save(&buf, "PNG");
+					emit imageDataDropped(ba);
+					return true;
+				}
+			}
+		}
+		const QMimeData* md = nullptr;
+		if (e->type() == QEvent::DragEnter) md = static_cast<QDragEnterEvent*>(e)->mimeData();
+		else if (e->type() == QEvent::DragMove) md = static_cast<QDragMoveEvent*>(e)->mimeData();
+		else if (e->type() == QEvent::Drop) md = static_cast<QDropEvent*>(e)->mimeData();
+		if (md && (hasLocalImage(md) || md->hasImage())) {
+			if (e->type() == QEvent::Drop) {
+				if (hasLocalImage(md)) {
+					QStringList paths;
+					for (const QUrl& u : md->urls()) paths << u.toLocalFile();
+					emit imageDropRequested(paths);
+				} else {
+					QImage img = qvariant_cast<QImage>(md->imageData());
+					QByteArray ba;
+					QBuffer buf(&ba);
+					buf.open(QIODevice::WriteOnly);
+					img.save(&buf, "PNG");
+					emit imageDataDropped(ba);
+				}
+				static_cast<QDropEvent*>(e)->acceptProposedAction();
+			} else {
+				e->accept();
+			}
+			return true;
+		}
+		if (md && md->hasUrls()) {
+			QStringList http;
+			for (const QUrl& u : md->urls())
+				if (u.scheme().startsWith("http")) http << u.toString();
+			if (!http.isEmpty()) {
+				if (e->type() == QEvent::Drop) {
+					emit urlDropRequested(http);
+					static_cast<QDropEvent*>(e)->acceptProposedAction();
+				} else {
+					e->accept();
+				}
+				return true;
+			}
+			e->ignore(); // не-картинковые ссылки не вставляем
+			return true;
+		}
+	}
+	return QSplitter::eventFilter(o, e);
+}
 } // namespace powercalc::ui

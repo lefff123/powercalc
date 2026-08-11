@@ -225,6 +225,11 @@ void fillMeta(const YAML::Node& root, DocumentAst& ast, int yamlLine) {
 			if (!yamlAs(v, a) || (a != "left" && a != "center" && a != "right" && a != "justify"))
 				addDiag(ast, Diagnostic::Level::Error, "E001", yamlLine, "bad align: " + a);
 			else meta.align = a;
+		} else if (key == "heading_align") {
+			std::string a;
+			if (!yamlAs(v, a) || (a != "left" && a != "center" && a != "right" && a != "justify"))
+				addDiag(ast, Diagnostic::Level::Error, "E001", yamlLine, "bad heading_align: " + a);
+			else meta.headingAlign = a;
 		} else if (key == "page") {
 			if (!v.IsMap()) { addDiag(ast, Diagnostic::Level::Error, "E001", yamlLine, "page must be a map"); continue; }
 			for (const auto& pk : v) {
@@ -232,7 +237,6 @@ void fillMeta(const YAML::Node& root, DocumentAst& ast, int yamlLine) {
 				if (!yamlAs(pk.first, pkey)) continue;
 				if (pkey == "size") { std::string s; if (yamlAs(pk.second, s)) meta.pageSize = s; }
 				else if (pkey == "margin") fillMargin(pk.second, meta, ast, yamlLine);
-				// неизвестные page.* игнорируются
 			}
 		} else if (key == "text") {
 			if (!v.IsMap()) { addDiag(ast, Diagnostic::Level::Error, "E001", yamlLine, "text must be a map"); continue; }
@@ -246,7 +250,6 @@ void fillMeta(const YAML::Node& root, DocumentAst& ast, int yamlLine) {
 				}
 			}
 		} else {
-			// неизвестный ключ (включая base_voltage): игнорируем, но запоминаем
 			YAML::Emitter em; em << v;
 			meta.unknownKeys.emplace_back(key, em.c_str());
 		}
@@ -493,6 +496,16 @@ DocumentAst DocumentParser::parse(const std::string& source) const {
 		if (isEmpty(line)) { ++i; continue; }
 
 		if (i == firstNonEmpty && trim(line) == "---") { i = parseYaml(lines, i, ast); continue; }
+
+		if (trim(line) == "[toc]") {
+			Block b;
+			b.kind = BlockKind::Toc;
+			b.lineBegin = b.lineEnd = i + 1;
+			b.raw = line;
+			ast.blocks.push_back(std::move(b));
+			++i;
+			continue;
+		}
 
 		int lvl = headingLevel(line);
 		if (lvl) {

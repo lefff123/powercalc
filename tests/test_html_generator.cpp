@@ -79,3 +79,11 @@ TEST(HtmlGen, TableCellLatexEscape) {
 	EXPECT_TRUE(has(html, "\\(u=\\)"));   // чистый LaTeX, без вычисления
 	EXPECT_FALSE(has(html, "\\(2\\)"));
 }
+
+TEST(HtmlGen, TocAndHeadingAlign) {
+	auto html = gen("---\nheading_align: center\n---\n[toc]\n# Один\n## Два\n");
+	EXPECT_TRUE(has(html, "pc-toc"));
+	EXPECT_TRUE(has(html, "id=\"sec-1\""));
+	EXPECT_TRUE(has(html, "href=\"#sec-2\""));
+	EXPECT_TRUE(has(html, "text-align:center"));
+}

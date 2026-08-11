@@ -10,6 +10,15 @@ std::string trim(const std::string& s) {
 	while (e > b && (s[e - 1] == ' ' || s[e - 1] == '\t' || s[e - 1] == '\r')) --e;
 	return s.substr(b, e - b);
 }
+static double mmOf(const std::string& s) {
+	double v = std::atof(s.c_str());
+	if (s.size() > 2 && s.compare(s.size() - 2, 2, "cm") == 0) return v * 10.0;
+	return v;
+}
+static double pageHeightMm(const std::string& ps) {
+	if (ps == "A3") return 420; if (ps == "A5") return 210; if (ps == "Letter") return 279.4;
+	return 297;
+}
 } // namespace
 
 namespace powercalc::document {
@@ -63,8 +72,8 @@ void renderLine(std::ostringstream& h, const std::string& ln, const std::vector<
 	h << esc(ln.substr(pos));
 }
 
-std::string styleAttr(const Block& b, const DocumentMeta& m) {
-	std::string align = b.localAlign.empty() ? m.align : b.localAlign;
+std::string styleAttr(const Block& b, const std::string& fallbackAlign) {
+	std::string align = b.localAlign.empty() ? fallbackAlign : b.localAlign;
 	std::string s = "text-align:" + align + ";";
 	if (!b.localSize.empty()) s += "font-size:" + b.localSize + ";";
 	return " style=\"" + s + "\"";
@@ -89,25 +98,53 @@ std::string generateHtml(const DocumentAst& ast, const EvaluationResult& res, co
 	  << "body { font-family: \"Times New Roman\", Times, serif; font-size: " << esc(m.textSize)
 	  << "; text-align: " << m.align << "; }\n"
 	  << ".pc-formula { margin: 0.6em 0; }\n"
+	  << ".pc-toc ul { list-style: none; padding-left: 0; margin: 0.4em 0; }\n"
+	  << ".pc-toc li { display: flex; align-items: baseline; margin: 0.25em 0; }\n"
+	  << ".pc-toc a { color: inherit; text-decoration: none; }\n"
+	  << ".pc-toc .dots { flex: 1; border-bottom: 1.5px dotted #000000; margin: 0 0.4em; transform: translateY(-0.25em); }\n"
+	  << ".pc-toc .pg { white-space: nowrap; }\n"
 	  << "ul, ol { margin: 0.4em 0; padding-left: 2em; }\n"
 	  << "table { border-collapse: collapse; margin: 0.6em auto; }\n"
 	  << "td, th { border: 1px solid black; padding: 4px 8px; }\n"
 	  << "th { font-weight: normal; }\n"
 	  << "img { max-width: 100%; }\n"
-	  << ".pc-img-cap { color: gray; font-size: 0.9em; margin-top: 0.3em; }\n"
+	  << ".pc-img-cap { margin-top: 0.3em; }\n"
 	  << ".pc-missing { color: gray; }\n"
 	  << "p, .pc-formula { overflow-wrap: break-word; line-height: 1.9; }\n"
 	  << "p { hyphens: auto; }\n"
 	  << "</style>\n<body>\n";
 
+	struct HeadInfo { int level; std::string text; int id; };
+	std::vector<HeadInfo> heads;
+	{
+		int sec = 0;
+		for (const Block& bb : ast.blocks)
+			if (bb.kind == BlockKind::Heading) heads.push_back({bb.level, bb.text, ++sec});
+	}
+	int headCounter = 0;
+
 	for (const Block& b : ast.blocks) {
 		switch (b.kind) {
 		case BlockKind::Yaml: break;
-		case BlockKind::Heading:
-			h << "<h" << b.level << styleAttr(b, m) << ">" << esc(b.text) << "</h" << b.level << ">\n";
+		case BlockKind::Heading: {
+			++headCounter;
+			const std::string fall = m.headingAlign.empty() ? m.align : m.headingAlign;
+			h << "<h" << b.level << " id=\"sec-" << headCounter << "\"" << styleAttr(b, fall)
+			  << ">" << esc(b.text) << "</h" << b.level << ">\n";
 			break;
+		}
+
+		case BlockKind::Toc: {
+			h << "<div class=\"pc-toc\"><ul>";
+			for (const auto& hd : heads)
+				h << "<li style=\"padding-left:" << (hd.level - 1) * 1.2 << "em;\">"
+				  << "<a href=\"#sec-" << hd.id << "\">" << esc(hd.text) << "</a>"
+				  << "<span class=\"dots\"></span><span class=\"pg\" data-sec=\"" << hd.id << "\"></span></li>";
+			h << "</ul></div>\n";
+			break;
+		}
 		case BlockKind::Text: {
-			h << "<p" << styleAttr(b, m) << ">";
+			h << "<p" << styleAttr(b, m.align) << ">";
 			const auto ls = lines(b.text);
 			for (size_t li = 0; li < ls.size(); ++li) {
 				if (li) h << "<br>";
@@ -189,18 +226,19 @@ std::string generateHtml(const DocumentAst& ast, const EvaluationResult& res, co
 			if (it != perBlock.end() && it->second->emptyRhs) {
 				auto v = values.find(it->second->lhs);
 				if (v != values.end()) {
-					h << "<div class=\"pc-formula\"" << styleAttr(b, m) << ">\\(\\displaystyle " << esc(it->second->lhs)
-					<< " = " << esc(formatValue(v->second)) << "\\)</div>\n";
+					h << "<div class=\"pc-formula\"" << styleAttr(b, m.align) << ">\\(\\displaystyle "
+					  << esc(it->second->lhs) << " = " << esc(formatValue(v->second)) << "\\)</div>\n";
 					break;
 				}
 			}
-			h << "<div class=\"pc-formula\">\\(\\displaystyle " << esc(b.formula.exprRaw) << "\\)";
+			h << "<div class=\"pc-formula\"" << styleAttr(b, m.align) << ">\\(\\displaystyle "
+			  << esc(b.formula.exprRaw) << "\\)";
 			if (it != perBlock.end() && it->second->value) {
 				const BlockEvalResult& br = *it->second;
 				const bool showSub = m.showSubstitution != b.formula.invertSubstitution;
 				if (showSub && !br.substitutedLatex.empty())
 					h << " \\(\\displaystyle = " << esc(br.substitutedLatex)
-					<< " = " << esc(formatValue(*br.value)) << "\\)";
+					  << " = " << esc(formatValue(*br.value)) << "\\)";
 				else if (!showSub)
 					h << " \\(\\displaystyle = " << esc(formatValue(*br.value)) << "\\)";
 				if (!b.formula.unit.empty())
@@ -216,6 +254,11 @@ std::string generateHtml(const DocumentAst& ast, const EvaluationResult& res, co
 	  << "<script src=\"" << opts.assetPrefix << "contrib/auto-render.min.js\"></script>\n"
 	  << "<script>renderMathInElement(document.body,{strict:false,delimiters:[{left:\"$$\",right:\"$$\",display:true},"
 	  << "{left:\"\\\\(\",right:\"\\\\)\",display:false}]});</script>\n</body>\n";
+	h << "<script>(function(){var mm=96/25.4;var ph=(" << (pageHeightMm(m.pageSize) - mmOf(m.marginTop) - mmOf(m.marginBottom))
+	  << ")*mm;var first=null;document.querySelectorAll('.pc-toc .pg').forEach(function(el){"
+	  << "var t=document.getElementById('sec-'+el.getAttribute('data-sec'));if(!t)return;"
+	  << "var top=t.getBoundingClientRect().top+window.scrollY;if(first===null)first=top;"
+	  << "el.textContent=Math.max(1,Math.floor((top-first)/ph)+1);});})();</script>\n";
 	return h.str();
 }
-}
+} //namespace powercalc::document

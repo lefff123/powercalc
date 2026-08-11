@@ -4,4 +4,4 @@ add_subdirectory(ui)
 add_subdirectory(document)
 
 add_executable(powercalc main.cpp)
-target_link_libraries(powercalc PRIVATE matrix parser ui Qt6::Widgets Qt6::Core)
+target_link_libraries(powercalc PRIVATE matrix parser ui Qt6::Widgets Qt6::Core Qt6::Network)

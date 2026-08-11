@@ -287,3 +287,9 @@ TEST(DocumentParser, ImageAndStyle) {
 	EXPECT_EQ(a.blocks[1].localSize, "12pt");
 	EXPECT_EQ(a.blocks[1].text, "Титл");
 }
+
+TEST(DocumentParser, TocBlock) {
+	auto a = parse("[toc]\n# Один\n");
+	ASSERT_EQ(a.blocks.size(), 2u);
+	EXPECT_EQ(a.blocks[0].kind, BlockKind::Toc);
+}

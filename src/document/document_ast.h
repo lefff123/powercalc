@@ -24,7 +24,7 @@ struct InlineRef {
 	std::string raw;
 };
 
-enum class BlockKind { Yaml, Heading, Formula, Text, List, Table, Image };
+enum class BlockKind { Yaml, Heading, Formula, Text, List, Table, Image, Toc };
 
 // --- дерево выражения 
 enum class ExprKind { Number, Variable, Constant, Binary, Unary, Call, Frac, Error };
@@ -99,6 +99,7 @@ struct DocumentMeta {
 	std::string align = "justify";
 	std::string textSize = "14pt";
 	std::vector<std::pair<std::string, std::string>> unknownKeys; // путь, raw
+	std::string headingAlign; // "", иначе left/center/right/justify для всех заголовков
 };
 
 struct DocumentAst {

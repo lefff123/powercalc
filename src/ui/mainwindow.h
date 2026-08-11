@@ -2,9 +2,12 @@
 
 #include <QMainWindow>
 #include <QTableView>
+#include <QTemporaryDir>
+
 namespace powercalc::ui {
 class DocumentEditor;
 class DocumentView;
+class ImageSchemeHandler;
 }
 
 class QTabWidget;
@@ -15,6 +18,7 @@ class NodeTableModel;
 class LineTableModel;
 class QSplitter;
 class QAction;
+class QFileSystemWatcher;
 
 class MainWindow : public QMainWindow
 {
@@ -61,6 +65,11 @@ private:
 	powercalc::ui::DocumentEditor* m_docEditor = nullptr;
 	QString m_documentLineEndings = "\n"; 
 
+	QTemporaryDir m_projectDir;
+	powercalc::ui::ImageSchemeHandler *m_imgHandler = nullptr;
+	QFileSystemWatcher *m_watcher = nullptr;
+	QMenu *m_insertMenu = nullptr;
+
 private slots:
 	void onImportRastrWin();
 	void onExportRastrWin();
@@ -77,4 +86,6 @@ private slots:
 	void onDeleteNode();
 	void onExportHtml();
 	void onExportPdf();
+	void setupProjectDir();
+	void onInsertImage();
 };

@@ -23,13 +23,18 @@ public:
 	void setText(const QString& text);
 	const powercalc::document::DocumentAst& ast() const { return m_ast; }
 	const powercalc::document::EvaluationResult& evalResult() const { return m_evalResult; }
+	void insertAtCursor(const QString& text);
 
 signals:
 	void documentChanged();
 	void diagnosticCountChanged(int errors, int warnings);
+	void imageDropRequested(const QStringList& paths);
+	void imageDataDropped(const QByteArray& pngData);
+	void urlDropRequested(const QStringList& urls);
 
 protected:
 	void keyPressEvent(QKeyEvent* e) override;
+	bool eventFilter(QObject* o, QEvent* e) override;
 
 private slots:
 	void reparse();
