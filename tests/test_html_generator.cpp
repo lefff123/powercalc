@@ -20,7 +20,7 @@ TEST(HtmlGen, SpecExample) {
 	EXPECT_TRUE(has(html, "@page { size: A4; margin: 2cm 2cm 2cm 3cm; }"));
 	EXPECT_TRUE(has(html, "font-size: 14pt"));
 	EXPECT_TRUE(has(html, "text-align: justify"));
-	EXPECT_TRUE(has(html, "<span class=\"pc-inline\">\\(R\\)</span>"));
+	EXPECT_TRUE(has(html, "\\(10\\)"));
 	EXPECT_TRUE(has(html, "<span class=\"pc-inline\">\\(Q\\)</span>"));
 	EXPECT_FALSE(has(html, "S = 1"));                 // hide не выводится
 	EXPECT_TRUE(has(html, "= 10 + 1 = 11"));          // подстановка

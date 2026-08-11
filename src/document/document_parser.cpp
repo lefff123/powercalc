@@ -148,18 +148,25 @@ void parseLocalStyle(Block& b, std::string& firstLine, int lineNo, DocumentAst& 
 		std::string tok = trim(inner.substr(st, cm == std::string::npos ? std::string::npos : cm - st));
 		if (!tok.empty()) {
 			std::string t = tok;
-			if (t.rfind("align:", 0) == 0) t = trim(t.substr(6));
-			else if (t.rfind("size:", 0) == 0) t = trim(t.substr(5));
-			if (t == "left" || t == "center" || t == "right" || t == "justify") b.localAlign = t;
-			else if (std::regex_match(t, rePt)) b.localSize = t;
-			else addDiag(ast, Diagnostic::Level::Warning, "W001", lineNo, "unknown style: " + tok);
+			if (t.rfind("show_substitution:", 0) == 0) {
+				std::string v = trim(t.substr(18));
+				if (v == "true") b.localSubstitution = 1;
+				else if (v == "false") b.localSubstitution = -1;
+				else addDiag(ast, Diagnostic::Level::Warning, "W001", lineNo, "unknown style: " + tok);
+			} else {
+				if (t.rfind("align:", 0) == 0) t = trim(t.substr(6));
+				else if (t.rfind("size:", 0) == 0) t = trim(t.substr(5));
+				if (t == "left" || t == "center" || t == "right" || t == "justify") b.localAlign = t;
+				else if (std::regex_match(t, rePt)) b.localSize = t;
+				else addDiag(ast, Diagnostic::Level::Warning, "W001", lineNo, "unknown style: " + tok);
+			}
 		}
 		if (cm == std::string::npos) break;
 		st = cm + 1;
 	}
 }
 
-void scanInlinesInto(std::vector<InlineRef>& out, const std::string& line, int lineNo, DocumentAst& ast, bool compute) {
+void scanInlinesInto(std::vector<InlineRef>& out, const std::string& line, int lineNo, DocumentAst& ast) {
 	size_t p = 0;
 	while ((p = line.find("$$", p)) != std::string::npos) {
 		size_t close = line.find("$$", p + 2);
@@ -176,14 +183,14 @@ void scanInlinesInto(std::vector<InlineRef>& out, const std::string& line, int l
 		ref.length = static_cast<int>(close - p) + 2;
 		ref.symbolic = true;
 		ref.raw = content;
-		ref.compute = compute;
+		ref.compute = true;
 		out.push_back(ref);
 		p = close + 2;
 	}
 }
 
 void scanInlines(Block& b, const std::string& line, int lineNo, DocumentAst& ast) {
-	scanInlinesInto(b.inlines, line, lineNo, ast, false);
+	scanInlinesInto(b.inlines, line, lineNo, ast);
 }
 
 void fillMargin(const YAML::Node& m, DocumentMeta& meta, DocumentAst& ast, int yamlLine) {
@@ -296,7 +303,7 @@ int parseYaml(const std::vector<std::string>& lines, int start, DocumentAst& ast
 	return close == -1 ? n : close + 1;
 }
 
-int parseFormula(const std::vector<std::string>& lines, int start, DocumentAst& ast) {
+int parseFormula(std::vector<std::string>& lines, int start, DocumentAst& ast) { 
 	const int n = static_cast<int>(lines.size());
 	Block b;
 	b.kind = BlockKind::Formula;
@@ -330,13 +337,8 @@ int parseFormula(const std::vector<std::string>& lines, int start, DocumentAst& 
 				endLine = li;
 				return true;
 			}
-			size_t h = s.find('#', i);
-			size_t d = s.find("$$", i);
-			size_t stop = s.size();
-			if (h != std::string::npos) stop = h;
-			if (d != std::string::npos && d < stop) stop = d;
-			acc += s.substr(i, stop - i);
-			i = stop;
+			acc += s[i];
+			++i;
 		}
 		std::string t = trim(acc);
 		if (!t.empty()) content.emplace_back(li + 1, t);
@@ -377,7 +379,8 @@ int parseFormula(const std::vector<std::string>& lines, int start, DocumentAst& 
 	}
 	b.lineEnd = endLine + 1;
 
-	// суффикс {…} после закрывающего $$ — локальный стиль блока
+		// суффикс {…} после закрывающего $$ — локальный стиль; остальной хвост — остаток строки
+	std::string leftover;
 	{
 		const std::string& s = lines[endLine];
 		size_t d = s.rfind("$$");
@@ -386,6 +389,8 @@ int parseFormula(const std::vector<std::string>& lines, int start, DocumentAst& 
 			if (tail.size() >= 2 && tail.front() == '{' && tail.back() == '}') {
 				std::string tmp = tail;
 				parseLocalStyle(b, tmp, endLine + 1, ast);
+			} else if (!tail.empty()) {
+				leftover = tail;
 			}
 		}
 	}
@@ -405,6 +410,11 @@ int parseFormula(const std::vector<std::string>& lines, int start, DocumentAst& 
 	for (int j = start; j <= endLine && j < n; ++j)
 		b.raw += (b.raw.empty() ? "" : "\n") + lines[j];
 	ast.blocks.push_back(std::move(b));
+
+	if (!leftover.empty()) {
+		lines[endLine] = leftover; // главный цикл распарсит хвост как новую строку
+		return endLine;
+	}
 	return next;
 }
 
@@ -423,7 +433,7 @@ int parseList(const std::vector<std::string>& lines, int start, DocumentAst& ast
 		if (first) { parseLocalStyle(b, text, i + 1, ast); first = false; }
 		ListItem it;
 		it.level = level; it.ordered = ordered; it.line = i + 1; it.text = text;
-		scanInlinesInto(it.inlines, text, i + 1, ast, false);
+		scanInlinesInto(it.inlines, text, i + 1, ast);
 		b.items.push_back(std::move(it));
 		++i;
 	}
@@ -456,7 +466,7 @@ int parseTable(const std::vector<std::string>& lines, int start, DocumentAst& as
 			TableCell cell;
 			cell.text = trim(rawRows[r][c]);
 			cell.align = c < aligns.size() ? aligns[c] : 0;
-			scanInlinesInto(cell.inlines, cell.text, tr.line, ast, true);
+			scanInlinesInto(cell.inlines, cell.text, tr.line, ast);
 			tr.cells.push_back(std::move(cell));
 		}
 		b.rows.push_back(std::move(tr));
@@ -483,7 +493,7 @@ int parseImage(const std::string& line, int start, DocumentAst& ast) {
 
 DocumentAst DocumentParser::parse(const std::string& source) const {
 	DocumentAst ast;
-	const auto lines = splitLines(source);
+	auto lines = splitLines(source);
 	const int n = static_cast<int>(lines.size());
 
 	int firstNonEmpty = -1;

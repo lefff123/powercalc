@@ -25,6 +25,12 @@ public:
 	const powercalc::document::EvaluationResult& evalResult() const { return m_evalResult; }
 	void insertAtCursor(const QString& text);
 
+	QTextEdit* editorWidget() { return m_edit; }
+	int lineNumberWidth() const;
+	void lineNumberPaint(QWidget* area);
+	QWidget* m_lineArea = nullptr;
+	QMap<int, int> m_lineMarks; // строка -> 0 ошибка / 1 предупреждение
+
 signals:
 	void documentChanged();
 	void diagnosticCountChanged(int errors, int warnings);

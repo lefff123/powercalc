@@ -87,6 +87,7 @@ struct Block {
 	// локальные стили (суффикс {…} первой строки блока)
 	std::string localAlign; // "", left/center/right/justify
 	std::string localSize;  // "", например "12pt"
+	int localSubstitution = 0; // 0 = наследовать, 1 = показать, -1 = скрыть
 };
 
 struct DocumentMeta {

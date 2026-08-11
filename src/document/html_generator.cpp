@@ -148,7 +148,7 @@ std::string generateHtml(const DocumentAst& ast, const EvaluationResult& res, co
 			const auto ls = lines(b.text);
 			for (size_t li = 0; li < ls.size(); ++li) {
 				if (li) h << "<br>";
-				renderLine(h, ls[li], b.inlines, b.lineBegin + static_cast<int>(li), nullptr);
+				renderLine(h, ls[li], b.inlines, b.lineBegin + static_cast<int>(li), &res.inlineValues);
 			}
 			h << "</p>\n";
 			break;
@@ -181,7 +181,7 @@ std::string generateHtml(const DocumentAst& ast, const EvaluationResult& res, co
 				}
 				h << "<li>";
 				liOpen = true;
-				renderLine(h, it.text, it.inlines, it.line, nullptr);
+				renderLine(h, it.text, it.inlines, it.line, &res.inlineValues);
 			}
 			while (!stack.empty()) {
 				if (liOpen) { h << "</li>"; liOpen = false; }
@@ -235,7 +235,9 @@ std::string generateHtml(const DocumentAst& ast, const EvaluationResult& res, co
 			  << esc(b.formula.exprRaw) << "\\)";
 			if (it != perBlock.end() && it->second->value) {
 				const BlockEvalResult& br = *it->second;
-				const bool showSub = m.showSubstitution != b.formula.invertSubstitution;
+				bool showSub = m.showSubstitution != b.formula.invertSubstitution;
+				if (b.localSubstitution == 1) showSub = true;
+				else if (b.localSubstitution == -1) showSub = false;
 				if (showSub && !br.substitutedLatex.empty())
 					h << " \\(\\displaystyle = " << esc(br.substitutedLatex)
 					  << " = " << esc(formatValue(*br.value)) << "\\)";

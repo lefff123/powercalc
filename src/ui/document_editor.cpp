@@ -14,13 +14,69 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QFile>
+#include <QPainter>
+#include <QScrollBar>
+#include <QAbstractTextDocumentLayout>
 
 namespace powercalc::ui {
+
+namespace {
+
+static bool looksLikeImage(const QString& path) {
+	const QString f = path.toLower();
+	if (f.endsWith(".png") || f.endsWith(".jpg") || f.endsWith(".jpeg") || f.endsWith(".svg") ||
+		f.endsWith(".webp") || f.endsWith(".gif") || f.endsWith(".bmp")) return true;
+	QFile file(path);
+	if (!file.open(QIODevice::ReadOnly)) return false;
+	const QByteArray h = file.read(12);
+	return h.startsWith("\x89PNG") || h.startsWith("\xff\xd8") || h.startsWith("GIF8") ||
+		   h.startsWith("BM") || h.contains("<svg") || h.contains("<?xml") ||
+		   (h.startsWith("RIFF") && h.mid(8, 4) == "WEBP");
+}
+
+static bool hasLocalImage(const QMimeData* md) {
+	if (!md->hasUrls()) return false;
+	for (const QUrl& u : md->urls()) {
+		if (!u.isLocalFile()) return false;
+		const QString f = u.toLocalFile().toLower();
+		if (!(f.endsWith(".png") || f.endsWith(".jpg") || f.endsWith(".jpeg") || f.endsWith(".svg")))
+			return false;
+	}
+	return true;
+}
+
+class CodeEdit : public QTextEdit {
+public:
+	explicit CodeEdit(QWidget* p) : QTextEdit(p) {}
+	void setGutter(QWidget* g, int w) { m_gutter = g; m_gw = w; setViewportMargins(w, 0, 0, 0); }
+protected:
+	void resizeEvent(QResizeEvent* e) override {
+		QTextEdit::resizeEvent(e);
+		if (m_gutter) {
+			QRect cr = contentsRect();
+			m_gutter->setGeometry(cr.left(), cr.top(), m_gw, cr.height());
+		}
+	}
+private:
+	QWidget* m_gutter = nullptr;
+	int m_gw = 0;
+};
+
+class LineNumberArea : public QWidget {
+public:
+	explicit LineNumberArea(DocumentEditor* ed) : QWidget(ed->editorWidget()), m_ed(ed) {}
+	QSize sizeHint() const override { return QSize(m_ed->lineNumberWidth(), 0); }
+protected:
+	void paintEvent(QPaintEvent*) override { m_ed->lineNumberPaint(this); }
+private:
+	DocumentEditor* m_ed;
+};
+}
 
 DocumentEditor::DocumentEditor(QWidget* parent)
 	: QSplitter(Qt::Vertical, parent)
 {
-	m_edit = new QTextEdit(this);
+	m_edit = new CodeEdit(this);
 	m_edit->setAcceptRichText(false);
 	m_edit->setFont(QFont("Courier New", 10));
 	m_edit->installEventFilter(this);
@@ -44,6 +100,14 @@ DocumentEditor::DocumentEditor(QWidget* parent)
 	connect(m_errorList, &QListWidget::itemClicked, this, &DocumentEditor::onErrorClicked);
 
 	m_edit->setAcceptDrops(true);
+
+	m_lineArea = new LineNumberArea(this);
+	static_cast<CodeEdit*>(m_edit)->setGutter(m_lineArea, 48);
+	connect(m_edit->verticalScrollBar(), &QScrollBar::valueChanged, m_lineArea, [this] { m_lineArea->update(); });
+	connect(m_edit->document(), &QTextDocument::blockCountChanged, m_lineArea, [this] {
+		static_cast<CodeEdit*>(m_edit)->setGutter(m_lineArea, lineNumberWidth());
+		m_lineArea->update();
+	});
 }
 
 void DocumentEditor::insertAtCursor(const QString& text) {
@@ -128,6 +192,14 @@ void DocumentEditor::reparse() {
 	updateErrorHighlights();
 	updateErrorList();
 
+	m_lineMarks.clear();
+	for (const auto& d : m_allDiags) {
+		const int lv = d.level == powercalc::document::Diagnostic::Level::Error ? 0 : 1;
+		auto it = m_lineMarks.find(d.line);
+		if (it == m_lineMarks.end() || lv < it.value()) m_lineMarks.insert(d.line, lv);
+	}
+	if (m_lineArea) m_lineArea->update();
+
 	int errors = 0, warnings = 0;
 	for (const auto& d : m_allDiags) {
 		if (d.level == powercalc::document::Diagnostic::Level::Error) ++errors;
@@ -140,13 +212,13 @@ void DocumentEditor::reparse() {
 void DocumentEditor::onErrorClicked(QListWidgetItem* item) {
 	int idx = m_errorList->row(item);
 	if (idx < 0 || idx >= static_cast<int>(m_allDiags.size())) return;
-	int line = m_allDiags[idx].line;
-	QTextBlock block = m_edit->document()->findBlockByNumber(line - 1);
-	if (block.isValid()) {
-		QTextCursor cursor(block);
-		m_edit->setTextCursor(cursor);
-		m_edit->ensureCursorVisible();
-	}
+	QTextBlock block = m_edit->document()->findBlockByNumber(m_allDiags[idx].line - 1);
+	if (!block.isValid()) return;
+	QTextCursor cursor(block);
+	cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
+	m_edit->setTextCursor(cursor);
+	m_edit->setFocus();
+	m_edit->ensureCursorVisible();
 }
 
 void DocumentEditor::updateErrorHighlights() {
@@ -180,29 +252,6 @@ void DocumentEditor::updateErrorList() {
 			.arg(QString::fromStdString(diag.message));
 		m_errorList->addItem(item);
 	}
-}
-
-static bool hasLocalImage(const QMimeData* md) {
-	if (!md->hasUrls()) return false;
-	for (const QUrl& u : md->urls()) {
-		if (!u.isLocalFile()) return false;
-		const QString f = u.toLocalFile().toLower();
-		if (!(f.endsWith(".png") || f.endsWith(".jpg") || f.endsWith(".jpeg") || f.endsWith(".svg")))
-			return false;
-	}
-	return true;
-}
-
-static bool looksLikeImage(const QString& path) {
-	const QString f = path.toLower();
-	if (f.endsWith(".png") || f.endsWith(".jpg") || f.endsWith(".jpeg") || f.endsWith(".svg") ||
-		f.endsWith(".webp") || f.endsWith(".gif") || f.endsWith(".bmp")) return true;
-	QFile file(path);
-	if (!file.open(QIODevice::ReadOnly)) return false;
-	const QByteArray h = file.read(12);
-	return h.startsWith("\x89PNG") || h.startsWith("\xff\xd8") || h.startsWith("GIF8") ||
-		   h.startsWith("BM") || h.contains("<svg") || h.contains("<?xml") ||
-		   (h.startsWith("RIFF") && h.mid(8, 4) == "WEBP");
 }
 
 bool DocumentEditor::eventFilter(QObject* o, QEvent* e)
@@ -266,5 +315,36 @@ bool DocumentEditor::eventFilter(QObject* o, QEvent* e)
 		}
 	}
 	return QSplitter::eventFilter(o, e);
+}
+
+int DocumentEditor::lineNumberWidth() const {
+	int digits = 2, n = m_edit->document()->blockCount();
+	while (n >= 100) { n /= 10; ++digits; }
+	return 12 + m_edit->fontMetrics().horizontalAdvance("9") * digits + 12;
+}
+
+void DocumentEditor::lineNumberPaint(QWidget* area) {
+	QPainter p(area);
+	p.fillRect(area->rect(), QColor(37, 37, 38));
+	QAbstractTextDocumentLayout* layout = m_edit->document()->documentLayout();
+	const int scroll = m_edit->verticalScrollBar()->value();
+	QTextBlock block = m_edit->document()->firstBlock();
+	while (block.isValid()) {
+		const QRectF br = layout->blockBoundingRect(block);
+		const int top = static_cast<int>(br.top()) - scroll;
+		const int height = static_cast<int>(br.height());
+		if (top > area->height()) break;
+		if (top + height < 0) { block = block.next(); continue; }
+		p.setPen(QColor(150, 150, 150));
+		p.drawText(0, top, area->width() - 14, height,
+				   Qt::AlignRight, QString::number(block.blockNumber() + 1));
+		auto it = m_lineMarks.find(block.blockNumber() + 1);
+		if (it != m_lineMarks.end()) {
+			p.setPen(Qt::NoPen);
+			p.setBrush(it.value() == 0 ? Qt::red : QColor(255, 165, 0));
+			p.drawEllipse(QPoint(area->width() - 6, top + height / 2), 3, 3);
+		}
+		block = block.next();
+	}
 }
 } // namespace powercalc::ui

@@ -742,7 +742,8 @@ void MainWindow::onExportPdf()
 	else if (m.pageSize == "A5") ps = QPageSize(QPageSize::A5);
 	else if (m.pageSize == "Letter") ps = QPageSize(QPageSize::Letter);
 	const QPageLayout layout(ps, QPageLayout::Portrait,
-		QMarginsF(toMm(m.marginLeft), toMm(m.marginTop), toMm(m.marginRight), toMm(m.marginBottom)));
+		QMarginsF(toMm(m.marginLeft), toMm(m.marginTop), toMm(m.marginRight), toMm(m.marginBottom)),
+		QPageLayout::Millimeter);
 
 	// Односрабатывающий коннект (Qt 5.15+)
 	connect(m_docView, &QWebEngineView::loadFinished, this, [this, path, layout]() {

@@ -42,14 +42,19 @@ static long runMs(const std::string& doc, int blocks) {
     return std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
 }
 
-TEST(DocumentPerf, ThousandLines) {
-    std::string doc = makeDoc(125);
-    EXPECT_GE(std::count(doc.begin(), doc.end(), '\n'), 1000);
-    EXPECT_LT(runMs(doc, 125), 100);
-}
-
 TEST(DocumentPerf, TenThousandLines) {
     std::string doc = makeDoc(1250);
     EXPECT_GE(std::count(doc.begin(), doc.end(), '\n'), 10000);
     EXPECT_LT(runMs(doc, 1250), 1000);
+}
+
+TEST(DocumentPerf, ThousandLines) {
+	std::string src;
+	for (int i = 1; i <= 1000; ++i) src += "$$x_" + std::to_string(i) + " = " + std::to_string(i) + "$$\n";
+	auto t0 = std::chrono::steady_clock::now();
+	auto ast = DocumentParser().parse(src);
+	SymbolTable st;
+	evaluateDocument(ast, st);
+	auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count();
+	EXPECT_LT(ms, 50);
 }

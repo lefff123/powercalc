@@ -96,6 +96,39 @@ EvaluationResult evaluateDocument(const DocumentAst& ast, SymbolTable& st) {
 	EvaluationResult res;
 	auto provider = st.asProvider();
 
+	auto processInlines = [&](const std::vector<InlineRef>& inls) {
+		for (const auto& ref : inls) {
+			if (!ref.compute) continue;
+			if (!ref.raw.empty() && ref.raw[0] == '!') continue;
+			const std::string& raw = ref.raw;
+			InlineValue iv;
+			if (raw.find('=') == std::string::npos) {
+				auto pe = parseExpression(raw, ref.line);
+				for (const auto& d : pe.diagnostics) res.diagnostics.push_back(d);
+				if (pe.tree) {
+					auto v = evaluate(*pe.tree, provider, res.diagnostics);
+					if (v) { iv.value = v; res.inlineValues[&ref] = iv; }
+				}
+			} else {
+				auto pf = parseFormulaExpr(raw, ref.line);
+				for (const auto& d : pf.diagnostics) res.diagnostics.push_back(d);
+				if (!pf.tree) continue;
+				if (!pf.lhs.empty()) iv.name = pf.lhs;
+				auto v = evaluate(*pf.tree, provider, res.diagnostics);
+				if (v) {
+					if (!pf.lhs.empty() && !isReservedName(pf.lhs)) {
+						st.define(pf.lhs, *v);
+						res.definitions.emplace_back(pf.lhs, *v);
+					}
+					iv.value = v;
+				} else if (pf.emptyRhs) {
+					iv.value = st.lookup(pf.lhs);
+				}
+				if (iv.value || !iv.name.empty()) res.inlineValues[&ref] = iv;
+			}
+		}
+	};
+
 	for (const auto& b : ast.blocks) {
 		if (b.kind == BlockKind::Formula) {
 			auto pf = parseFormulaExpr(b.formula.exprRaw, b.formula.exprLine);
@@ -126,53 +159,16 @@ EvaluationResult evaluateDocument(const DocumentAst& ast, SymbolTable& st) {
 					res.definitions.emplace_back(pf.lhs, *val);
 				}
 			}
-			continue;
 		}
 
-		if (b.kind == BlockKind::Text) {
-			for (const auto& ref : b.inlines) {
-				if (ref.symbolic) continue;
-				if (!st.lookup(ref.name)) {
-					res.diagnostics.push_back({Diagnostic::Level::Error, "E005",
-						ref.line, "undefined variable " + ref.name});
-				}
-			}
+		if (b.kind == BlockKind::Text) processInlines(b.inlines);
+		else if (b.kind == BlockKind::List) {
+			for (const auto& it : b.items) processInlines(it.inlines);
 		}
-
-		if (b.kind == BlockKind::Table) {
+		else if (b.kind == BlockKind::Table) {
 			for (const auto& r : b.rows)
 				for (const auto& c : r.cells)
-					for (const auto& ref : c.inlines) {
-						if (!ref.compute) continue;
-						if (!ref.raw.empty() && ref.raw[0] == '!') continue; // ! = чистый LaTeX, без вычисления
-						std::string raw = ref.raw;
-
-						InlineValue iv;
-						if (raw.find('=') == std::string::npos) {
-							auto pe = parseExpression(raw, ref.line);
-							for (const auto& d : pe.diagnostics) res.diagnostics.push_back(d);
-							if (pe.tree) {
-								auto v = evaluate(*pe.tree, provider, res.diagnostics);
-								if (v) { iv.value = v; res.inlineValues[&ref] = iv; }
-							}
-						} else {
-							auto pf = parseFormulaExpr(raw, ref.line);
-							for (const auto& d : pf.diagnostics) res.diagnostics.push_back(d);
-							if (!pf.tree) continue;
-							if (!pf.lhs.empty()) iv.name = pf.lhs;
-							auto v = evaluate(*pf.tree, provider, res.diagnostics);
-							if (v) {
-								if (!pf.lhs.empty() && !isReservedName(pf.lhs)) {
-									st.define(pf.lhs, *v);
-									res.definitions.emplace_back(pf.lhs, *v);
-								}
-								iv.value = v;
-							} else if (pf.emptyRhs) {
-								iv.value = st.lookup(pf.lhs);
-							}
-							if (iv.value || !iv.name.empty()) res.inlineValues[&ref] = iv;
-						}
-					}
+					processInlines(c.inlines);
 		}
 	}
 	return res;
