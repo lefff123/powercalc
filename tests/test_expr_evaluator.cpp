@@ -102,12 +102,12 @@ TEST(ExprEvaluator, E007) {
 }
 
 TEST(ExprEvaluator, E010) {
-    std::vector<Diagnostic> d;
-    calc("1 + 1", {}, d);
-    EXPECT_EQ(count(d, "E010"), 1);
-    d.clear();
-    calc("2 = x", {}, d);
-    EXPECT_EQ(count(d, "E010"), 1);
+	std::vector<Diagnostic> d;
+	calc("1 + 1", {}, d);
+	EXPECT_EQ(count(d, "E010"), 0); // v1.3: голое выражение — ок, считается как inline
+	d.clear();
+	calc("2 = x", {}, d);
+	EXPECT_EQ(count(d, "E010"), 1); // битое присваивание — по-прежнему ошибка
 }
 
 TEST(ExprEvaluator, W001DivByZero) {
