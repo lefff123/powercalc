@@ -12,18 +12,18 @@ find_package(QuaZip-Qt6 REQUIRED)
 #внешняя зависимость
 find_package(yaml-cpp QUIET)
 if(NOT TARGET yaml-cpp::yaml-cpp)
-  include(FetchContent)
-  FetchContent_Declare(yaml-cpp
-    GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
-    GIT_TAG 0.8.0)
-  set(YAML_CPP_BUILD_TESTS OFF  CACHE BOOL "" FORCE)
-  set(YAML_CPP_BUILD_TOOLS OFF  CACHE BOOL "" FORCE)
-  set(YAML_CPP_BUILD_CONTRIB OFF CACHE BOOL "" FORCE)
-  set(YAML_CPP_INSTALL OFF CACHE BOOL "" FORCE)
-  FetchContent_MakeAvailable(yaml-cpp)
-  if(NOT TARGET yaml-cpp::yaml-cpp AND TARGET yaml-cpp)
-    add_library(yaml-cpp::yaml-cpp ALIAS yaml-cpp)
-  endif()
+	include(FetchContent)
+  	FetchContent_Declare(yaml-cpp
+    	GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
+    	GIT_TAG 0.8.0)
+  	set(YAML_CPP_BUILD_TESTS OFF  CACHE BOOL "" FORCE)
+  	set(YAML_CPP_BUILD_TOOLS OFF  CACHE BOOL "" FORCE)
+  	set(YAML_CPP_BUILD_CONTRIB OFF CACHE BOOL "" FORCE)
+  	set(YAML_CPP_INSTALL OFF CACHE BOOL "" FORCE)
+  	FetchContent_MakeAvailable(yaml-cpp)
+  	if(NOT TARGET yaml-cpp::yaml-cpp AND TARGET yaml-cpp)
+    	add_library(yaml-cpp::yaml-cpp ALIAS yaml-cpp)
+  	endif()
 endif()
 
 if(MSVC)

@@ -280,6 +280,13 @@ bool isReservedName(const std::string& normalized) {
 
 ParsedFormula parseFormulaExpr(const std::string& src, int line) {
 	ParsedFormula res;
+	// нет '=' — это просто выражение (как inline), а не присваивание
+	if (src.find('=') == std::string::npos) {
+		auto pe = parseExpression(src, line);
+		res.diagnostics = std::move(pe.diagnostics);
+		res.tree = std::move(pe.tree);
+		return res;
+	}
 	auto tokens = tokenize(src, res.diagnostics, line);
 	if (tokens.front().kind == Token::Kind::End) {
 		res.diagnostics.push_back({Diagnostic::Level::Error, "E010", line, "empty formula"});

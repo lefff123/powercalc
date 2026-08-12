@@ -42,7 +42,7 @@ void DocumentHighlighter::highlightBlock(const QString& text) {
 		else {
 			setCurrentBlockState(1);
 			QTextCharFormat fmt;
-			fmt.setBackground(QColor(Qt::gray));
+			fmt.setBackground(QColor(87, 87, 87));
 			setFormat(0, text.length(), fmt);
 		}
 		return;

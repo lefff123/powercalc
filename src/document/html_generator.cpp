@@ -2,6 +2,7 @@
 #include "number_format.h"
 #include <map>
 #include <sstream>
+#include <algorithm>
 
 namespace {
 std::string trim(const std::string& s) {
@@ -72,9 +73,9 @@ void renderLine(std::ostringstream& h, const std::string& ln, const std::vector<
 	h << esc(ln.substr(pos));
 }
 
-std::string styleAttr(const Block& b, const std::string& fallbackAlign) {
+std::string styleAttr(const Block& b, const std::string& fallbackAlign, const std::string& extra = "") {
 	std::string align = b.localAlign.empty() ? fallbackAlign : b.localAlign;
-	std::string s = "text-align:" + align + ";";
+	std::string s = extra + "text-align:" + align + ";";
 	if (!b.localSize.empty()) s += "font-size:" + b.localSize + ";";
 	return " style=\"" + s + "\"";
 }
@@ -116,35 +117,47 @@ std::string generateHtml(const DocumentAst& ast, const EvaluationResult& res, co
 
 	struct HeadInfo { int level; std::string text; int id; };
 	std::vector<HeadInfo> heads;
+	std::vector<int> skipIds;
 	{
 		int sec = 0;
-		for (const Block& bb : ast.blocks)
+		for (size_t bi = 0; bi < ast.blocks.size(); ++bi) {
+			const Block& bb = ast.blocks[bi];
 			if (bb.kind == BlockKind::Heading) heads.push_back({bb.level, bb.text, ++sec});
+			else if (bb.kind == BlockKind::Toc && bi > 0 && ast.blocks[bi - 1].kind == BlockKind::Heading)
+				skipIds.push_back(sec);
+		}
 	}
 	int headCounter = 0;
 
+		bool breakNext = false;
 	for (const Block& b : ast.blocks) {
+		const std::string brk = breakNext ? "page-break-before: always;" : "";
+		breakNext = false;
 		switch (b.kind) {
 		case BlockKind::Yaml: break;
 		case BlockKind::Heading: {
 			++headCounter;
 			const std::string fall = m.headingAlign.empty() ? m.align : m.headingAlign;
-			h << "<h" << b.level << " id=\"sec-" << headCounter << "\"" << styleAttr(b, fall)
+			h << "<h" << b.level << " id=\"sec-" << headCounter << "\"" << styleAttr(b, fall, brk)
 			  << ">" << esc(b.text) << "</h" << b.level << ">\n";
 			break;
 		}
 
 		case BlockKind::Toc: {
-			h << "<div class=\"pc-toc\"><ul>";
-			for (const auto& hd : heads)
+			std::string st = brk;
+			if (!m.tocSize.empty()) st += "font-size:" + esc(m.tocSize) + ";";
+			h << "<div class=\"pc-toc\"" << (st.empty() ? std::string() : " style=\"" + st + "\"") << "><ul>";
+			for (const auto& hd : heads) {
+				if (std::find(skipIds.begin(), skipIds.end(), hd.id) != skipIds.end()) continue;
 				h << "<li style=\"padding-left:" << (hd.level - 1) * 1.2 << "em;\">"
 				  << "<a href=\"#sec-" << hd.id << "\">" << esc(hd.text) << "</a>"
 				  << "<span class=\"dots\"></span><span class=\"pg\" data-sec=\"" << hd.id << "\"></span></li>";
+			}
 			h << "</ul></div>\n";
 			break;
 		}
 		case BlockKind::Text: {
-			h << "<p" << styleAttr(b, m.align) << ">";
+			h << "<p" << styleAttr(b, m.align, brk) << ">";
 			const auto ls = lines(b.text);
 			for (size_t li = 0; li < ls.size(); ++li) {
 				if (li) h << "<br>";
@@ -154,19 +167,17 @@ std::string generateHtml(const DocumentAst& ast, const EvaluationResult& res, co
 			break;
 		}
 		case BlockKind::List: {
-			h << "<div style=\"text-align:left;"
-			  << (b.localSize.empty() ? std::string() : "font-size:" + b.localSize + ";")
-			  << "\">";
-			std::vector<bool> stack; // opened: ordered?
+			std::string st = brk + "text-align:left;";
+			if (!b.localSize.empty()) st += "font-size:" + b.localSize + ";";
+			h << "<div style=\"" << st << "\">";
+			std::vector<bool> stack;
 			bool liOpen = false;
 			for (const auto& it : b.items) {
-				// закрыть уровни глубже текущего
 				while (static_cast<int>(stack.size()) > it.level + 1) {
 					if (liOpen) { h << "</li>"; liOpen = false; }
 					h << (stack.back() ? "</ol>" : "</ul>");
 					stack.pop_back();
 				}
-				// на текущем уровне — если тип списка сменился, переоткрыть
 				if (static_cast<int>(stack.size()) == it.level + 1) {
 					if (liOpen) { h << "</li>"; liOpen = false; }
 					if (stack.back() != it.ordered) {
@@ -174,7 +185,6 @@ std::string generateHtml(const DocumentAst& ast, const EvaluationResult& res, co
 						stack.pop_back();
 					}
 				}
-				// открыть нужные уровни
 				while (static_cast<int>(stack.size()) < it.level + 1) {
 					h << (it.ordered ? "<ol>" : "<ul>");
 					stack.push_back(it.ordered);
@@ -192,7 +202,7 @@ std::string generateHtml(const DocumentAst& ast, const EvaluationResult& res, co
 			break;
 		}
 		case BlockKind::Table: {
-			h << "<table>\n";
+			h << "<table" << (brk.empty() ? std::string() : " style=\"" + brk + "\"") << ">\n";
 			for (const auto& r : b.rows) {
 				h << "<tr>";
 				for (const auto& c : r.cells) {
@@ -213,7 +223,7 @@ std::string generateHtml(const DocumentAst& ast, const EvaluationResult& res, co
 			if (uri.empty()) {
 				h << "<p><span class=\"pc-missing\">[image: " << esc(b.imageName) << "]</span></p>\n";
 			} else {
-				h << "<div style=\"text-align:center\"><img src=\"" << uri << "\" alt=\"" << esc(b.imageAlt) << "\">";
+				h << "<div style=\"" << brk << "text-align:center\"><img src=\"" << uri << "\" alt=\"" << esc(b.imageAlt) << "\">";
 				if (!b.imageAlt.empty()) h << "<div class=\"pc-img-cap\">" << esc(b.imageAlt) << "</div>";
 				h << "</div>\n";
 			}
@@ -222,16 +232,15 @@ std::string generateHtml(const DocumentAst& ast, const EvaluationResult& res, co
 		case BlockKind::Formula: {
 			if (b.formula.hide) break;
 			auto it = perBlock.find(&b);
-			// $$u=$$ : присваивание с пустой RHS -> "u = текущее значение"
 			if (it != perBlock.end() && it->second->emptyRhs) {
 				auto v = values.find(it->second->lhs);
 				if (v != values.end()) {
-					h << "<div class=\"pc-formula\"" << styleAttr(b, m.align) << ">\\(\\displaystyle "
+					h << "<div class=\"pc-formula\"" << styleAttr(b, m.align, brk) << ">\\(\\displaystyle "
 					  << esc(it->second->lhs) << " = " << esc(formatValue(v->second)) << "\\)</div>\n";
 					break;
 				}
 			}
-			h << "<div class=\"pc-formula\"" << styleAttr(b, m.align) << ">\\(\\displaystyle "
+			h << "<div class=\"pc-formula\"" << styleAttr(b, m.align, brk) << ">\\(\\displaystyle "
 			  << esc(b.formula.exprRaw) << "\\)";
 			if (it != perBlock.end() && it->second->value) {
 				const BlockEvalResult& br = *it->second;
@@ -241,7 +250,7 @@ std::string generateHtml(const DocumentAst& ast, const EvaluationResult& res, co
 				if (showSub && !br.substitutedLatex.empty())
 					h << " \\(\\displaystyle = " << esc(br.substitutedLatex)
 					  << " = " << esc(formatValue(*br.value)) << "\\)";
-				else if (!showSub)
+				else
 					h << " \\(\\displaystyle = " << esc(formatValue(*br.value)) << "\\)";
 				if (!b.formula.unit.empty())
 					h << " <span class=\"pc-unit\">" << esc(b.formula.unit) << "</span>";
@@ -249,6 +258,9 @@ std::string generateHtml(const DocumentAst& ast, const EvaluationResult& res, co
 			h << "</div>\n";
 			break;
 		}
+		case BlockKind::PageBreak:
+			breakNext = true;
+			break;
 		}
 	}
 

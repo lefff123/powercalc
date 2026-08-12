@@ -7,7 +7,7 @@
 #include "document_view.h"
 #include "html_generator.h"
 #include "image_scheme_handler.h"
-
+#include "pdf_pagenum.h"
 
 #include <QLabel>
 #include <QMenu>
@@ -745,15 +745,44 @@ void MainWindow::onExportPdf()
 		QMarginsF(toMm(m.marginLeft), toMm(m.marginTop), toMm(m.marginRight), toMm(m.marginBottom)),
 		QPageLayout::Millimeter);
 
-	// Односрабатывающий коннект (Qt 5.15+)
-	connect(m_docView, &QWebEngineView::loadFinished, this, [this, path, layout]() {
-		m_docView->page()->printToPdf(path, layout);
-		statusBar()->showMessage("PDF сохранён: " + path);
+	const bool needNumbers = m.showPageNumbers;
+	const int start = m.pageStart;
+	const bool first = m.numberFirstPage;
+	const double bottomMm = toMm(m.marginBottom);
+	const QString pageSizeS = QString::fromStdString(m.pageSize);
+	const QString tmp = path + ".tmp.pdf";
+
+	connect(m_docView, &QWebEngineView::loadFinished, this, [this, tmp, layout]() {
+		m_docView->page()->printToPdf(tmp, layout);
 	}, Qt::SingleShotConnection);
 
-	refreshPreview(); // setHtml -> loadFinished -> printToPdf
-}
+	connect(m_docView->page(), &QWebEnginePage::pdfPrintingFinished, this,
+		[this, path, tmp, needNumbers, start, first, bottomMm, pageSizeS](const QString&, bool ok) {
+			if (!ok) {
+				QFile::remove(tmp);
+				QMessageBox::warning(this, "PDF", "Не удалось сформировать PDF");
+				return;
+			}
+			if (!needNumbers) {
+				QFile::remove(path);
+				QFile::rename(tmp, path);
+				statusBar()->showMessage("PDF сохранён: " + path);
+			} else {
+				QString err;
+				int pages = 0;
+				if (!powercalc::ui::addPageNumbers(tmp, path, start, first, bottomMm, pageSizeS, &err, &pages)) {
+					QFile::remove(tmp);
+					QMessageBox::warning(this, "PDF", "Ошибка нумерации страниц: " + err);
+					return;
+				}
+				QFile::remove(tmp);
+				statusBar()->showMessage(QString("PDF сохранён: %1 (страниц: %2, нумерация с %3)")
+					.arg(path).arg(pages).arg(first ? start : start + 1));
+			}
+		}, Qt::SingleShotConnection);
 
+	refreshPreview();
+}
 void MainWindow::setupProjectDir()
 {
 	m_projectDir = QTemporaryDir();

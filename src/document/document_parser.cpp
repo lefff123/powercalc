@@ -256,6 +256,22 @@ void fillMeta(const YAML::Node& root, DocumentAst& ast, int yamlLine) {
 					else addDiag(ast, Diagnostic::Level::Error, "E001", yamlLine, "bad text.size: " + s);
 				}
 			}
+		} else if (key == "show_page_numbers") {
+			bool b;
+			if (!yamlAs(v, b)) addDiag(ast, Diagnostic::Level::Error, "E001", yamlLine, "show_page_numbers must be bool");
+			else meta.showPageNumbers = b;
+		} else if (key == "page_start") {
+			int n;
+			if (!yamlAs(v, n) || n < 1) addDiag(ast, Diagnostic::Level::Error, "E001", yamlLine, "page_start must be >= 1");
+			else meta.pageStart = n;
+		} else if (key == "number_first_page") {
+			bool b;
+			if (!yamlAs(v, b)) addDiag(ast, Diagnostic::Level::Error, "E001", yamlLine, "number_first_page must be bool");
+			else meta.numberFirstPage = b;
+		} else if (key == "toc_size") {
+			std::string s;
+			if (!yamlAs(v, s) || !std::regex_match(s, rePt)) addDiag(ast, Diagnostic::Level::Error, "E001", yamlLine, "bad toc_size: " + s);
+			else meta.tocSize = s;
 		} else {
 			YAML::Emitter em; em << v;
 			meta.unknownKeys.emplace_back(key, em.c_str());
@@ -517,6 +533,16 @@ DocumentAst DocumentParser::parse(const std::string& source) const {
 			continue;
 		}
 
+		if (trim(line) == "[break]" || trim(line) == "[pagebreak]") {
+			Block b;
+			b.kind = BlockKind::PageBreak;
+			b.lineBegin = b.lineEnd = i + 1;
+			b.raw = line;
+			ast.blocks.push_back(std::move(b));
+			++i;
+			continue;
+		}
+
 		int lvl = headingLevel(line);
 		if (lvl) {
 			Block b;
@@ -551,6 +577,7 @@ DocumentAst DocumentParser::parse(const std::string& source) const {
 			if (isFormulaOpen(lines[i])) break;
 			if (isImageLine(lines[i])) break;
 			if (isTableLine(lines[i])) break;
+			if (trim(lines[i]) == "[break]" || trim(lines[i]) == "[pagebreak]") break;
 			{
 				int ll; bool oo; std::string tt;
 				if (isListLine(lines[i], ll, oo, tt)) break;
