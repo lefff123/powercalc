@@ -100,12 +100,23 @@ EvaluationResult evaluateDocument(const DocumentAst& ast, SymbolTable& st) {
 		for (const auto& ref : inls) {
 			if (!ref.compute) continue;
 			if (!ref.raw.empty() && ref.raw[0] == '!') continue;
-			const std::string& raw = ref.raw;
+			std::string raw = ref.raw;
+			std::string unit;
+			{
+				size_t amp = raw.find('&');
+				if (amp != std::string::npos) { unit = trim(raw.substr(amp + 1)); raw = trim(raw.substr(0, amp)); }
+			}
 			InlineValue iv;
+			iv.unit = unit;
 			if (raw.find('=') == std::string::npos) {
 				auto pe = parseExpression(raw, ref.line);
 				for (const auto& d : pe.diagnostics) res.diagnostics.push_back(d);
 				if (pe.tree) {
+					iv.expr = raw;
+					iv.trivial = pe.tree->kind == ExprKind::Number ||
+								 pe.tree->kind == ExprKind::Variable ||
+								 pe.tree->kind == ExprKind::Constant;
+					if (!iv.trivial) { std::string s; if (subLatex(*pe.tree, provider, s)) iv.substituted = s; }
 					auto v = evaluate(*pe.tree, provider, res.diagnostics);
 					if (v) { iv.value = v; res.inlineValues[&ref] = iv; }
 				}
@@ -113,9 +124,15 @@ EvaluationResult evaluateDocument(const DocumentAst& ast, SymbolTable& st) {
 				auto pf = parseFormulaExpr(raw, ref.line);
 				for (const auto& d : pf.diagnostics) res.diagnostics.push_back(d);
 				if (!pf.tree) continue;
+				iv.expr = raw;
+				iv.emptyRhs = pf.emptyRhs;
 				if (!pf.lhs.empty()) iv.name = pf.lhs;
 				auto v = evaluate(*pf.tree, provider, res.diagnostics);
 				if (v) {
+					iv.trivial = pf.tree->kind == ExprKind::Number ||
+								 pf.tree->kind == ExprKind::Variable ||
+								 pf.tree->kind == ExprKind::Constant;
+					if (!iv.trivial) { std::string s; if (subLatex(*pf.tree, provider, s)) iv.substituted = s; }
 					if (!pf.lhs.empty() && !isReservedName(pf.lhs)) {
 						st.define(pf.lhs, *v);
 						res.definitions.emplace_back(pf.lhs, *v);
@@ -133,32 +150,37 @@ EvaluationResult evaluateDocument(const DocumentAst& ast, SymbolTable& st) {
 		if (b.kind == BlockKind::Formula) {
 			auto pf = parseFormulaExpr(b.formula.exprRaw, b.formula.exprLine);
 			for (const auto& d : pf.diagnostics) res.diagnostics.push_back(d);
-			if (!pf.tree) continue;
+			if (b.formula.modifierRaw == "!" || b.formula.modifierRaw == "hide!") continue;
 
-			auto val = evaluate(*pf.tree, provider, res.diagnostics);
+			std::optional<Value> val;
+			if (pf.tree) val = evaluate(*pf.tree, provider, res.diagnostics);
 
 			BlockEvalResult br;
 			br.block = &b;
 			br.lhs = pf.lhs;
 			br.emptyRhs = pf.emptyRhs;
-			if (!pf.lhs.empty() && val.has_value()) {
-				br.value = *val;
-				if (pf.tree->kind != ExprKind::Number &&
-					pf.tree->kind != ExprKind::Variable &&
-					pf.tree->kind != ExprKind::Constant) {
-					std::string s;
-					if (subLatex(*pf.tree, provider, s)) br.substitutedLatex = s;
+			if (pf.tree) {
+				br.trivialRhs = pf.tree->kind == ExprKind::Number ||
+								pf.tree->kind == ExprKind::Variable ||
+								pf.tree->kind == ExprKind::Constant;
+				if (val && !pf.lhs.empty()) {
+					br.value = *val;
+					if (!br.trivialRhs) {
+						std::string s;
+						if (subLatex(*pf.tree, provider, s)) br.substitutedLatex = s;
+					}
 				}
+				if (val && pf.lhs.empty()) br.value = *val; // голое выражение
 			}
+			if (pf.emptyRhs && !br.value) br.value = st.lookup(pf.lhs); // "u ="
+
 			res.blocks.push_back(std::move(br));
 
-			if (!pf.lhs.empty()) {
-				if (isReservedName(pf.lhs)) continue;
-				if (val.has_value()) {
-					st.define(pf.lhs, *val);
-					res.definitions.emplace_back(pf.lhs, *val);
-				}
+			if (!pf.lhs.empty() && !isReservedName(pf.lhs) && val) {
+				st.define(pf.lhs, *val);
+				res.definitions.emplace_back(pf.lhs, *val);
 			}
+			continue;
 		}
 
 		if (b.kind == BlockKind::Text) processInlines(b.inlines);

@@ -61,9 +61,10 @@ TEST(DocumentParser, Modifiers) {
 }
 
 TEST(DocumentParser, UnknownModifier) {
-	auto a = parse("$$foo\nx = 1\n$$\n");
-	EXPECT_EQ(count(a, "E003"), 1);
-	EXPECT_EQ(a.diagnostics[0].line, 1);
+	auto a = parse("$$blah\n");
+	EXPECT_EQ(count(a, "E003"), 0);
+	EXPECT_EQ(a.blocks.size(), 1u);
+	EXPECT_EQ(a.blocks[0].kind, BlockKind::Formula);
 }
 
 TEST(DocumentParser, Units) {
@@ -199,8 +200,10 @@ TEST(DocumentParser, InlineNested) {
 }
 
 TEST(DocumentParser, CollectsAllErrors) {
+	// v1.3: E003 отменён; "foo"/"bar" теперь голые выражения (E005 в evaluator)
+	// остаётся только E002 для незакрытого блока
 	auto a = parse("$$foo\nx = 1\n$$\n\n$$bar\ny = 2\n");
-	EXPECT_EQ(count(a, "E003"), 2);
+	EXPECT_EQ(count(a, "E003"), 0);
 	EXPECT_EQ(count(a, "E002"), 1);
 }
 

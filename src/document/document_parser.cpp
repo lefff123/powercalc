@@ -40,24 +40,21 @@ int headingLevel(const std::string& line) {
 	return static_cast<int>(h);
 }
 
-// строка открывает блок формулы, если начинается с $$ и это не inline
 bool isFormulaOpen(const std::string& line) {
 	if (line.rfind("$$", 0) != 0) return false;
 	size_t close = line.find("$$", 2);
-	if (close == std::string::npos) return true;
-	std::string tail = trim(line.substr(close + 2));
-	if (!tail.empty() && !(tail.front() == '{' && tail.back() == '}')) return false;
+	if (close == std::string::npos) return true; // многострочная — блок
 	std::string inner = trim(line.substr(2, close - 2));
-	if (inner.empty()) return true;
+	if (inner.empty()) return true; // $$ $$ — блок
+	// есть модификатор hide/! — блок
 	for (const std::string& m : {"hide!", "hide", "!"}) {
-		if (inner == m || (inner.rfind(m, 0) == 0 &&
-			(inner[m.size()] == ' ' || inner[m.size()] == '\t')))
+		if (inner == m || (inner.rfind(m, 0) == 0 && (inner[m.size()] == ' ' || inner[m.size()] == '\t')))
 			return true;
 	}
-	size_t k = 0;
-	if (inner[0] == '\\') k = 1;
-	auto ns = utf8::readVariable(inner, k);
-	return !(ns.ok && k == inner.size());
+	// есть пробел/перенос внутри — блок
+	if (inner.find(' ') != std::string::npos || inner.find('\t') != std::string::npos) return true;
+	// иначе — inline (одиночное $$U$$ без пробелов)
+	return false;
 }
 
 void addDiag(DocumentAst& ast, Diagnostic::Level lv, const std::string& code, int line, std::string msg) {
@@ -319,7 +316,7 @@ int parseYaml(const std::vector<std::string>& lines, int start, DocumentAst& ast
 	return close == -1 ? n : close + 1;
 }
 
-int parseFormula(std::vector<std::string>& lines, int start, DocumentAst& ast) { 
+int parseFormula(std::vector<std::string>& lines, int start, DocumentAst& ast) {
 	const int n = static_cast<int>(lines.size());
 	Block b;
 	b.kind = BlockKind::Formula;
@@ -361,21 +358,23 @@ int parseFormula(std::vector<std::string>& lines, int start, DocumentAst& ast) {
 		return false;
 	};
 
+	// открывающая строка: модификатор hide/! — со пробелом или слитно
 	{
 		const std::string& s = lines[start];
 		size_t i = 2;
 		while (i < s.size() && (s[i] == ' ' || s[i] == '\t')) ++i;
 		size_t j = i;
 		while (j < s.size() && s[j] != ' ' && s[j] != '\t' && s[j] != '$') ++j;
-		std::string tok = s.substr(i, j - i);
-		if (tok == "hide" || tok == "!" || tok == "hide!") {
-			f.modifierRaw = tok;
-			if (tok != "!") f.hide = true;
-			if (tok != "hide") f.invertSubstitution = true;
-			closed = processLine(start, j);
-		} else if (!tok.empty() && trim(s.substr(j)).empty() &&
-				   tok.find_first_of("=#\\&") == std::string::npos) {
-			addDiag(ast, Diagnostic::Level::Error, "E003", start + 1, "unknown modifier: " + tok);
+		const std::string tok = s.substr(i, j - i);
+		std::string mod;
+		size_t modEnd = j;
+		if (tok == "hide" || tok == "hide!") mod = tok;
+		else if (!tok.empty() && tok[0] == '!') { mod = "!"; modEnd = i + 1; }
+		if (!mod.empty()) {
+			f.modifierRaw = mod;
+			if (mod != "!") f.hide = true;
+			if (mod != "hide") f.invertSubstitution = true;
+			closed = processLine(start, modEnd);
 		} else {
 			closed = processLine(start, i);
 		}
@@ -385,8 +384,29 @@ int parseFormula(std::vector<std::string>& lines, int start, DocumentAst& ast) {
 	if (closed) next = endLine + 1;
 	else {
 		next = n;
-		for (int li = start + 1; li < n; ++li)
-			if (processLine(li, 0)) { closed = true; next = endLine + 1; break; }
+		for (int li = start + 1; li < n; ++li) {
+			size_t off = 0;
+			// первая строка содержимого: модификатор может стоять и здесь
+			if (content.empty() && f.modifierRaw.empty()) {
+				const std::string& s2 = lines[li];
+				size_t a = 0;
+				while (a < s2.size() && (s2[a] == ' ' || s2[a] == '\t')) ++a;
+				size_t b2 = a;
+				while (b2 < s2.size() && s2[b2] != ' ' && s2[b2] != '\t' && s2[b2] != '$') ++b2;
+				const std::string t2 = s2.substr(a, b2 - a);
+				std::string mod2;
+				size_t off2 = b2;
+				if (t2 == "hide" || t2 == "hide!") mod2 = t2;
+				else if (!t2.empty() && t2[0] == '!') { mod2 = "!"; off2 = a + 1; }
+				if (!mod2.empty()) {
+					f.modifierRaw = mod2;
+					if (mod2 != "!") f.hide = true;
+					if (mod2 != "hide") f.invertSubstitution = true;
+					off = off2;
+				}
+			}
+			if (processLine(li, off)) { closed = true; next = endLine + 1; break; }
+		}
 	}
 	if (!closed) {
 		addDiag(ast, Diagnostic::Level::Error, "E002", start + 1, "unclosed formula block");
@@ -395,7 +415,7 @@ int parseFormula(std::vector<std::string>& lines, int start, DocumentAst& ast) {
 	}
 	b.lineEnd = endLine + 1;
 
-		// суффикс {…} после закрывающего $$ — локальный стиль; остальной хвост — остаток строки
+	// суффикс {…} после закрывающего $$ — локальный стиль; остальной хвост — leftover
 	std::string leftover;
 	{
 		const std::string& s = lines[endLine];
@@ -428,7 +448,7 @@ int parseFormula(std::vector<std::string>& lines, int start, DocumentAst& ast) {
 	ast.blocks.push_back(std::move(b));
 
 	if (!leftover.empty()) {
-		lines[endLine] = leftover; // главный цикл распарсит хвост как новую строку
+		lines[endLine] = leftover;
 		return endLine;
 	}
 	return next;

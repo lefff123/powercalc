@@ -25,7 +25,8 @@ TEST(HtmlGen, SpecExample) {
 	EXPECT_FALSE(has(html, "S = 1"));                 // hide не выводится
 	EXPECT_TRUE(has(html, "= 10 + 1 = 11"));          // подстановка
 	EXPECT_TRUE(has(html, "pc-unit\">Ом"));           // единица серым
-	EXPECT_TRUE(has(html, "= 12"));                   // ! инвертирует
+	EXPECT_TRUE(has(html, "Z2 = R + 2"));
+	EXPECT_FALSE(has(html, "= 12"));
 	EXPECT_FALSE(has(html, "# многостроч"));          // комментарии нет (если был в источнике)
 	EXPECT_TRUE(has(html, "katex.min.css"));
 }

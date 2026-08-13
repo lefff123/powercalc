@@ -47,7 +47,7 @@ std::vector<std::string> lines(const std::string& s) {
 }
 
 void renderLine(std::ostringstream& h, const std::string& ln, const std::vector<InlineRef>& refs, int lineNo,
-				const std::map<const InlineRef*, InlineValue>* iv) {
+				const std::map<const InlineRef*, InlineValue>* iv, bool showSub) {
 	size_t pos = 0;
 	for (const auto& ref : refs) {
 		if (ref.line != lineNo) continue;
@@ -57,10 +57,27 @@ void renderLine(std::ostringstream& h, const std::string& ln, const std::vector<
 		if (ref.compute && iv) {
 			auto it = iv->find(&ref);
 			if (it != iv->end() && it->second.value) {
+				const InlineValue& v = it->second;
 				h << "\\(";
-				if (!it->second.name.empty()) h << esc(it->second.name) << " = ";
-				h << esc(formatValue(*it->second.value));
+				if (v.emptyRhs) {
+					h << esc(v.name) << " = " << esc(formatValue(*v.value));
+				} else if (v.name.empty()) {
+					// голое выражение — просто значение
+					h << esc(formatValue(*v.value));
+				} else {
+					// присваивание
+					h << esc(v.expr);
+					if (!v.trivial) {
+						if (showSub && !v.substituted.empty())
+							h << " = " << esc(v.substituted) << " = " << esc(formatValue(*v.value));
+						else
+							h << " = " << esc(formatValue(*v.value));
+					}
+					// тривиальное присваивание (u = 10): значение уже в тексте
+				}
 				h << "\\)";
+				if (!v.unit.empty())
+					h << " <span class=\"pc-unit\">" << esc(v.unit) << "</span>";
 				pos = st + ref.length;
 				continue;
 			}
@@ -109,6 +126,7 @@ std::string generateHtml(const DocumentAst& ast, const EvaluationResult& res, co
 	  << "td, th { border: 1px solid black; padding: 4px 8px; }\n"
 	  << "th { font-weight: normal; }\n"
 	  << "img { max-width: 100%; }\n"
+	  << ".pc-img { break-inside: avoid; page-break-inside: avoid; }\n"
 	  << ".pc-img-cap { margin-top: 0.3em; }\n"
 	  << ".pc-missing { color: gray; }\n"
 	  << "p, .pc-formula { overflow-wrap: break-word; line-height: 1.9; }\n"
@@ -161,7 +179,7 @@ std::string generateHtml(const DocumentAst& ast, const EvaluationResult& res, co
 			const auto ls = lines(b.text);
 			for (size_t li = 0; li < ls.size(); ++li) {
 				if (li) h << "<br>";
-				renderLine(h, ls[li], b.inlines, b.lineBegin + static_cast<int>(li), &res.inlineValues);
+				renderLine(h, ls[li], b.inlines, b.lineBegin + static_cast<int>(li), &res.inlineValues, m.showSubstitution);
 			}
 			h << "</p>\n";
 			break;
@@ -191,7 +209,7 @@ std::string generateHtml(const DocumentAst& ast, const EvaluationResult& res, co
 				}
 				h << "<li>";
 				liOpen = true;
-				renderLine(h, it.text, it.inlines, it.line, &res.inlineValues);
+				renderLine(h, it.text, it.inlines, it.line, &res.inlineValues, m.showSubstitution);
 			}
 			while (!stack.empty()) {
 				if (liOpen) { h << "</li>"; liOpen = false; }
@@ -210,7 +228,7 @@ std::string generateHtml(const DocumentAst& ast, const EvaluationResult& res, co
 					const char* al = c.align == 'l' ? "left" : c.align == 'r' ? "right" : "center";
 					h << " style=\"text-align:" << al << "\"";
 					h << ">";
-					renderLine(h, c.text, c.inlines, r.line, &res.inlineValues);
+					renderLine(h, c.text, c.inlines, r.line, &res.inlineValues, m.showSubstitution);
 					h << (r.header ? "</th>" : "</td>");
 				}
 				h << "</tr>\n";
@@ -223,38 +241,43 @@ std::string generateHtml(const DocumentAst& ast, const EvaluationResult& res, co
 			if (uri.empty()) {
 				h << "<p><span class=\"pc-missing\">[image: " << esc(b.imageName) << "]</span></p>\n";
 			} else {
-				h << "<div style=\"" << brk << "text-align:center\"><img src=\"" << uri << "\" alt=\"" << esc(b.imageAlt) << "\">";
+				h << "<div class=\"pc-img\" style=\"" << brk << "text-align:center\"><img src=\"" << uri << "\" alt=\"" << esc(b.imageAlt) << "\">";
 				if (!b.imageAlt.empty()) h << "<div class=\"pc-img-cap\">" << esc(b.imageAlt) << "</div>";
 				h << "</div>\n";
 			}
 			break;
 		}
-		case BlockKind::Formula: {
+				case BlockKind::Formula: {
 			if (b.formula.hide) break;
 			auto it = perBlock.find(&b);
-			if (it != perBlock.end() && it->second->emptyRhs) {
-				auto v = values.find(it->second->lhs);
-				if (v != values.end()) {
-					h << "<div class=\"pc-formula\"" << styleAttr(b, m.align, brk) << ">\\(\\displaystyle "
-					  << esc(it->second->lhs) << " = " << esc(formatValue(v->second)) << "\\)</div>\n";
-					break;
-				}
-			}
-			h << "<div class=\"pc-formula\"" << styleAttr(b, m.align, brk) << ">\\(\\displaystyle "
-			  << esc(b.formula.exprRaw) << "\\)";
-			if (it != perBlock.end() && it->second->value) {
-				const BlockEvalResult& br = *it->second;
-				bool showSub = m.showSubstitution != b.formula.invertSubstitution;
-				if (b.localSubstitution == 1) showSub = true;
-				else if (b.localSubstitution == -1) showSub = false;
-				if (showSub && !br.substitutedLatex.empty())
-					h << " \\(\\displaystyle = " << esc(br.substitutedLatex)
-					  << " = " << esc(formatValue(*br.value)) << "\\)";
-				else
-					h << " \\(\\displaystyle = " << esc(formatValue(*br.value)) << "\\)";
+			const bool bareExpr = b.formula.exprRaw.find('=') == std::string::npos;
+			if (it != perBlock.end() && it->second->emptyRhs && it->second->value) {
+				h << "<div class=\"pc-formula\"" << styleAttr(b, m.align, brk) << ">\\(\\displaystyle "
+				  << esc(it->second->lhs) << " = " << esc(formatValue(*it->second->value)) << "\\)";
 				if (!b.formula.unit.empty())
 					h << " <span class=\"pc-unit\">" << esc(b.formula.unit) << "</span>";
+				h << "</div>\n";
+				break;
 			}
+			h << "<div class=\"pc-formula\"" << styleAttr(b, m.align, brk) << ">";
+			if (!bareExpr) h << "\\(\\displaystyle " << esc(b.formula.exprRaw) << "\\)";
+			if (it != perBlock.end() && it->second->value) {
+				const BlockEvalResult& br = *it->second;
+				bool showSub = m.showSubstitution;
+				if (b.localSubstitution == 1) showSub = true;
+				else if (b.localSubstitution == -1) showSub = false;
+				if (bareExpr)
+					h << "\\(\\displaystyle " << esc(formatValue(*br.value)) << "\\)";
+				else if (showSub && !br.substitutedLatex.empty())
+					h << " \\(\\displaystyle = " << esc(br.substitutedLatex)
+					  << " = " << esc(formatValue(*br.value)) << "\\)";
+				else if (!showSub || !br.trivialRhs)
+					h << " \\(\\displaystyle = " << esc(formatValue(*br.value)) << "\\)";
+			} else if (bareExpr) {
+				h << "\\(\\displaystyle " << esc(b.formula.exprRaw) << "\\)";
+			}
+			if (!b.formula.unit.empty())
+				h << " <span class=\"pc-unit\">" << esc(b.formula.unit) << "</span>";
 			h << "</div>\n";
 			break;
 		}
