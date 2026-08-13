@@ -13,8 +13,8 @@ sudo apt install build-essential cmake git python3-pip qpdf pipx \
     qt6-base-dev qt6-webengine-dev qt6-5compat-dev
 pipx install conan && conan profile detect
 
-mkdir build && cd build
-conan install .. --build=missing
+mkdir -p build && cd build
+conan install .. --build=missing -of .
 cmake .. -DCMAKE_TOOLCHAIN_FILE=conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Release
 cmake --build . -j$(nproc)
 ctest

@@ -1,8 +1,0 @@
-[requires]
-yaml-cpp/0.8.0
-gtest/1.14.0
-zlib/1.3.1
-
-[generators]
-CMakeDeps
-CMakeToolchain
