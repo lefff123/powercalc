@@ -88,4 +88,5 @@ private slots:
 	void onExportPdf();
 	void setupProjectDir();
 	void onInsertImage();
+	void onAbout();
 };

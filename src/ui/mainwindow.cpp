@@ -8,6 +8,7 @@
 #include "html_generator.h"
 #include "image_scheme_handler.h"
 #include "pdf_pagenum.h"
+#include "aboutdialog.h"
 
 #include <QLabel>
 #include <QMenu>
@@ -245,7 +246,7 @@ void MainWindow::createMenusAndToolbars()
 	m_graphViewMenu->addAction("Вписать по размеру");
 
 	m_helpMenu = menuBar()->addMenu("Помощь");
-	m_helpMenu->addAction("О программе");
+	m_helpMenu->addAction("О программе", this, &MainWindow::onAbout);
 }
 
 void MainWindow::applyTabContext(int index)
@@ -802,4 +803,9 @@ void MainWindow::onInsertImage()
 	QFile::remove(dst);
 	if (!QFile::copy(src, dst)) { QMessageBox::warning(this, "Картинка", "Не удалось скопировать файл"); return; }
 	m_docEditor->insertAtCursor(QString("![%1](%1)").arg(name));
+}
+
+void MainWindow::onAbout() {
+	AboutDialog dlg(this);
+	dlg.exec();
 }
